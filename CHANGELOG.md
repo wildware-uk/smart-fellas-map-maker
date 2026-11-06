@@ -2,6 +2,11 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.06-5cacae7
+
+- The Map panel can update the add-on for you: it says when a new version is out, and Update puts it in place. Your maps stay as they are.
+- A failed update can no longer lose the saved copy of your old add-on.
+
 ## 2026.11.06-57c5f01
 
 - Small fixes and tidying.

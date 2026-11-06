@@ -9,7 +9,7 @@ const MarkerKinds := preload("marker_kinds.gd")
 const Populate := preload("populate.gd")
 const Recipes := preload("recipes.gd")
 const SeabedTool := preload("seabed_tool.gd")
-const Version := preload("version.gd")
+const UpdateBox := preload("update_box.gd")
 
 signal placing_asked(kind: String)
 signal sculpting_asked(mode: int)
@@ -276,23 +276,12 @@ func _say_populated(result: Dictionary) -> void:
 	show_map()
 
 
-## Which add-on this is, and the page with the newest one, so a map maker can tell theirs is old.
+## Which add-on this is, and updating it.
 func _add_version(column: Control) -> void:
 	_add_heading(column, "This add-on")
-	_label(column, "Version %s" % Version.number())
-	var link := LinkButton.new()
-	link.text = "Get the newest, and see what's new"
-	link.uri = Version.RELEASES_URL
-	link.tooltip_text = Version.RELEASES_URL
-	link.underline = LinkButton.UNDERLINE_MODE_ALWAYS
-	link.add_theme_color_override("font_color", get_theme_color("accent_color", "Editor"))
-	# In line with the labels' words, which sit inside their box's margin.
-	var inset := MarginContainer.new()
-	var words_start := maxf(get_theme_stylebox("normal", "Label").content_margin_left, 0.0)
-	inset.add_theme_constant_override("margin_left", int(words_start))
-	inset.add_theme_constant_override("margin_bottom", 6)
-	inset.add_child(link)
-	column.add_child(inset)
+	var box := UpdateBox.new()
+	box.minimum_width = MINIMUM_WIDTH
+	column.add_child(box)
 
 
 func _label(column: Control, words: String) -> Label:

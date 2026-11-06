@@ -22,13 +22,13 @@ It's a Godot project with our add-on already switched on. The add-on gives Godot
 
 ## Update it
 
-The **Map** panel shows which version you have, at the bottom, with a link to the [releases page](https://github.com/wildware-uk/smart-fellas-map-maker/releases). If a newer one is out:
+The **Map** panel says which version you have, under **This add-on**. Once a day, when Godot opens, it asks GitHub whether a newer one is out, and says "Update available" with what's new. Press **Update**, then **Restart Godot**. Only the add-on's own folder (`addons/smart_fellas_maps`) changes: your maps and models stay as they are. Each download is checked against the SHA-256 published with its release, and refused if it doesn't match.
 
-1. Download the new zip and unzip it somewhere new.
-2. Copy your maps (your `.tscn` files, and any models of your own) from the old folder into the new one.
-3. Open the new `project.godot` in Godot.
+**Check for updates** asks straight away. Untick **Check for updates automatically** if you'd rather it didn't ask by itself. With no internet, it says nothing.
 
-What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+If your Map panel has no Update button, your add-on is from before the updater. To update it, once: download the new zip and unzip it somewhere new, copy your maps (your `.tscn` files, and any models of your own) into the new folder, and open its `project.godot`.
+
+Every version, and what changed in it, is on the [releases page](https://github.com/wildware-uk/smart-fellas-map-maker/releases) and in [CHANGELOG.md](CHANGELOG.md).
 
 ## Found a problem?
 

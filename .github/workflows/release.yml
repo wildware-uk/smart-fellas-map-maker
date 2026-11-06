@@ -1,5 +1,7 @@
 # Each version is published here as a tag. This makes its GitHub Release, with the project as a zip:
 # https://github.com/wildware-uk/smart-fellas-map-maker/releases/latest/download/smart-fellas-map-maker.zip
+# and its SHA-256 beside it, smart-fellas-map-maker.zip.sha256, which the add-on's updater checks the
+# download against.
 name: Release
 
 on:
@@ -17,7 +19,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Zip the project
-        run: git archive --format=zip --prefix=smart-fellas-map-maker/ -o smart-fellas-map-maker.zip "$GITHUB_REF_NAME"
+        run: |
+          git archive --format=zip --prefix=smart-fellas-map-maker/ -o smart-fellas-map-maker.zip "$GITHUB_REF_NAME"
+          sha256sum smart-fellas-map-maker.zip >smart-fellas-map-maker.zip.sha256
 
       - name: Take this version's notes from the changelog
         run: |
@@ -29,5 +33,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" smart-fellas-map-maker.zip \
+          gh release create "$GITHUB_REF_NAME" smart-fellas-map-maker.zip smart-fellas-map-maker.zip.sha256 \
             --title "Map maker ${GITHUB_REF_NAME#v}" --notes-file notes.md --latest
