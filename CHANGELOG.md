@@ -2,6 +2,25 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.06-9f4bd7d
+
+- Meshes scattered with MultiMesh now come out of Export as placed copies, with their stretch and their tint.
+- Materials that look the same, and pictures shared between models, count once against the map's limits.
+- Many problems of one kind are said as one line, with a Details button listing each.
+- A map's package holds each picture once, however many of its models wear it, so maps download smaller.
+- A map may now bring up to 512 models of its own, with 200 different materials, 2 million triangles and 256 MB of pictures between them, drawing up to 4 million triangles.
+- Export keeps only the colour picture of each material, the only one the game draws, so bump and shine pictures no longer put a model over its limit.
+- A model with more than 8 materials is split into parts by Export.
+- Scattered copies and models of your own that stand far outside the map are left out with one warning, instead of stopping Export.
+- A map may place up to 12,000 pieces, of which up to 4,096 from the kit, and its own models may have up to 400 different materials.
+- A mesh imported from a whole level, far wider than one model, is cut by Export into parts by where they lie, leaving out what is far outside the map.
+- Surfaces of a mesh drawn with the same material are joined into one.
+- Your models stop being drawn where the water's haze hides them, and small ones past 60 m like the kit's props, so big maps run faster.
+- Particles, CSG shapes and other things maps can't use yet no longer stop Export: they're left out, with one short warning line.
+- When a map's pictures come to more than the game takes, Export now keeps making them smaller until they fit.
+- Many of your models over one limit are said in one clear line naming that limit.
+- When a map can't be exported, warnings are listed after the problems and marked as warnings.
+
 ## 2026.11.06-5cacae7
 
 - The Map panel can update the add-on for you: it says when a new version is out, and Update puts it in place. Your maps stay as they are.

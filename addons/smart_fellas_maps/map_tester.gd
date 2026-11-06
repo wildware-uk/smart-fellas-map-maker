@@ -213,14 +213,19 @@ static func source_of(problem: String, sources: Dictionary) -> Variant:
 ## - "state": EXPORT_REFUSED, NO_GAME, CANT_CHECK, PROBLEMS or FINE;
 ## - "folder": the .sfm the map went into, and "game": what was found, once they're known;
 ## - "words": what to tell the map maker first;
-## - "lines": each problem or warning, as {"words", "node"}, with the node it's on if it's on one.
+## - "lines": each problem or warning, as {"words", "node"}, with the node it's on if it's on one, and
+##   "details", the lines behind it, if it was said once for many things.
 ## `into_game` says the folder is the game's own maps folder, which is said in words a map maker knows.
 static func export_and_check(root: Node, out_folder: String, chosen_game: String, tree: SceneTree, into_game := false) -> Dictionary:
 	var exported := MapExporter.export_map(root, out_folder)
 	var lines: Array[Dictionary] = []
 	if exported.has("problems"):
 		for words: String in exported["problems"]:
-			lines.append({"words": words, "node": exported.get("nodes", {}).get(words)})
+			var line := {"words": words, "node": exported.get("nodes", {}).get(words)}
+			if exported.get("details", {}).has(words):
+				line["details"] = exported["details"][words]
+			lines.append(line)
+		lines.append_array(_marked(exported.get("warnings", [])))
 		return {"state": State.EXPORT_REFUSED, "words": "This map can't be exported yet:", "lines": lines}
 	var folder: String = exported["package"]
 	var went := "Exported to Smart Fellas: My maps\n(%s)" % folder if into_game else "Exported to %s" % folder
@@ -237,9 +242,22 @@ static func export_and_check(root: Node, out_folder: String, chosen_game: String
 		if not lines.is_empty():
 			fine += " Worth a look, though:"
 		return {"state": State.FINE, "folder": folder, "game": game, "words": fine, "lines": lines}
+	lines.clear()
 	for words in problems:
 		lines.append(_line_about(words, exported["sources"]))
+	lines.append_array(_marked(exported["warnings"]))
 	return {"state": State.PROBLEMS, "folder": folder, "game": game, "words": "The game would refuse this map:", "lines": lines}
+
+
+## Warnings said after a map's problems, each marked as only a warning, so that it isn't taken for one more
+## reason the map can't be used.
+static func _marked(warnings: Array) -> Array[Dictionary]:
+	var marked: Array[Dictionary] = []
+	for warning: Dictionary in warnings:
+		var line := warning.duplicate()
+		line["words"] = "Warning: %s" % warning["words"]
+		marked.append(line)
+	return marked
 
 
 ## One of the checker's problems, saying which thing on the map it means.

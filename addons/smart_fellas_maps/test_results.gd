@@ -1,7 +1,8 @@
 @tool
 extends AcceptDialog
 ## Says what came of Export Map or Test Map: what the game's checker thought, in plain words, with a
-## button on each problem that shows the piece it's about, and a way to point at the game if it's lost.
+## button on each problem that shows the piece it's about, a Details button on one said for many things, and a
+## way to point at the game if it's lost.
 
 const GameFinder := preload("game_finder.gd")
 const MapTester := preload("map_tester.gd")
@@ -65,6 +66,18 @@ func _add_line(line: Dictionary) -> void:
 		show_it.pressed.connect(_select.bind(node))
 		row.add_child(show_it)
 	_holder.add_child(row)
+	if not line.has("details"):
+		return
+	var details := _words("• " + "\n• ".join(line["details"]))
+	details.visible = false
+	var open := Button.new()
+	open.text = "Details"
+	open.tooltip_text = "Show each one."
+	open.toggle_mode = true
+	open.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	open.toggled.connect(func(on: bool) -> void: details.visible = on)
+	row.add_child(open)
+	_holder.add_child(details)
 
 
 func _select(node: Node) -> void:

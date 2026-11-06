@@ -26,6 +26,8 @@ func _initialize() -> void:
 	var out_folder := words[1] if words.size() > 1 else MapExporter.default_out_folder()
 	var result := MapExporter.export_map(root, out_folder)
 	print(MapExporter.result_words(result))
+	for warning: Dictionary in result.get("warnings", []):
+		print("WARNING: %s" % warning["words"])
 	if result.has("package") and words.size() > 2:
 		_write_view(root, words[2])
 	quit(0 if result.has("package") else 1)

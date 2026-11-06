@@ -27,22 +27,53 @@ const SFM_EXTENSION := "sfm"
 const OLD_PACKAGE_FILES := ["map.ron", "preview.png"]
 ## The game's MAX_ASSET_BYTES and MAX_MAP_MODELS.
 const MOST_MODEL_BYTES := 67108864
-const MOST_MODELS := 32
+const MOST_MODELS := 1024
+## The game's MAX_ENTRIES: the most files and folders a map's package may hold.
+const MOST_ENTRIES := 1024
 ## The game's limits on one model, from src/map/model.rs.
 const MOST_MODEL_TRIANGLES := 30000
 const MOST_MODEL_CORNERS := 60000
 const MOST_MODEL_MATERIALS := 8
 const MOST_MODEL_PICTURES := 8
+## The game's MAX_PRIMITIVES: the most surfaces one mesh of a model may have.
+const MOST_PRIMITIVES := 16
 const MOST_PICTURE_SIDE := 2048
+## The game's MAX_MODEL_REACH: how far from its own middle a model may reach, in metres.
+const MOST_MODEL_REACH := 100.0
+## How wide Export cuts the parts of a mesh too wide for one model, at most, so that a part with the odd
+## triangle sticking out of it still fits the game's reach.
+const WIDEST_CUT := 160.0
 const MOST_PICTURE_BYTES := 8388608
-## How many pixels across the game draws a model's picture at most, so a bigger one Export rebuilds is made
-## this size, which loses nothing.
+## How many pixels across the game draws a model's picture at most, so a bigger one is made this size,
+## which loses nothing.
 const PICTURE_SIDE_DRAWN := 1024
-## The game's limits on all the map's own models together, from src/map/check.rs.
-const MOST_MAP_MATERIALS := 16
-const MOST_MAP_TRIANGLES := 300000
-const MOST_MAP_CORNERS := 300000
-const MOST_MAP_PICTURE_BYTES := 25165824
+## The fewest pixels across Export makes every picture of a map whose pictures come to more than the game
+## takes.
+const SMALLEST_PICTURE_SIDE := 256
+## The game's limits on all the map's own models together, from src/map/check.rs. Materials that look the
+## same count once, and so does a picture many models share.
+const MOST_MAP_MATERIALS := 400
+const MOST_MAP_TRIANGLES := 2000000
+const MOST_MAP_CORNERS := 2000000
+const MOST_MAP_PICTURE_BYTES := 268435456
+## The game's MAX_PLACED_MODEL_TRIANGLES: the most all the pieces made of the map's own models may draw.
+const MOST_PLACED_TRIANGLES := 4000000
+## The game's MAX_MAP_PICTURE_PIXELS: the most pixels the map's own pictures may hold between them, each
+## different one once, as the game draws them, no more than PICTURE_SIDE_DRAWN across.
+const MOST_PICTURE_PIXELS := 100000000
+## The most pixels Export lets the map's own models' pictures hold: MOST_PICTURE_PIXELS, but for a test
+## that wants to reach it with a few small pictures.
+static var picture_pixels_taken := MOST_PICTURE_PIXELS
+## The game's MAX_PIECES: the most pieces a map may place, of the kit and of its own models together.
+const MOST_ALL_PIECES := 12000
+## How many problems of one kind are each said; more than this are said as one line, with the rest behind
+## its Details button.
+const FEW_TO_LIST := 3
+## The most shades of colour Export keeps for the copies of one scattered mesh, each a model of its own.
+const MOST_SHADES := 8
+## How finely a scattered copy's colour and stretch are told apart, so that near ones share a model.
+const SHADE_STEP := 0.125
+const STRETCH_STEP := 0.02
 ## How long a model's name in the package may be, before ".glb".
 const MOST_MODEL_NAME_LETTERS := 56
 const SCALES := Vector2(0.1, 10.0)
@@ -91,7 +122,8 @@ const HAUNTS := [
 	["gropers", "groper_hole_", "Groper hole", "groper holes"],
 ]
 const JELLY_HUES := ["Teal", "Blue", "Pink"]
-## The game's MAX_CUSTOM_PIECES. The game refuses anything over it however the package was made.
+## The game's MAX_CUSTOM_PIECES: the most kit pieces a map may place. The game refuses anything over it
+## however the package was made.
 const MOST_PIECES := 4096
 ## The game's MAX_MAP_FILE_BYTES: the most map.ron may weigh.
 const MOST_FILE_BYTES := 2097152
@@ -148,8 +180,35 @@ class Scene:
 	## The models Export made itself, from a model the game can't take as it is, by their name in assets/,
 	## as the .glb's bytes. Their names are in `models` too.
 	var built := {}
+	## The models Export made of scattered meshes, by what they're made of, as their names in assets/, so
+	## that two scatters of one mesh share a model.
+	var scatter_models := {}
 	## What all the map's own models come to between them, as the game counts it.
-	var model_totals := {"triangles": 0, "corners": 0, "materials": 0, "picture_bytes": 0}
+	var model_totals := {"triangles": 0, "corners": 0, "materials": 0, "picture_bytes": 0, "picture_pixels": 0}
+	## How many triangles each of the map's own models draws, by its name in assets/.
+	var model_triangles := {}
+	## Where the middle of each model Export moved to its own middle was, under its node, by its name in
+	## assets/: its pieces stand there instead, so it's drawn where it was.
+	var model_middles := {}
+	## The different looks of the map's own models' materials, and their different pictures by MD5 as
+	## their weight: what the game counts once however many models share them.
+	var looks := {}
+	var picture_weights := {}
+	## The same pictures' pixels, as the game draws them.
+	var picture_pixels := {}
+	## How many pixels across Export makes a picture it shrinks.
+	var picture_side := PICTURE_SIDE_DRAWN
+	## What Export did by itself, for one line to the map maker: scattered meshes (MultiMeshInstance3D)
+	## made into copies, the copies, the models whose pictures it shrank.
+	var changes := {"scatters": 0, "copies": 0, "shrunk": 0, "split": 0, "cut": 0, "cut_parts": 0}
+	## Problems of one kind on many things, said as one line once the scene is read: by kind, as
+	## {"many": words with %d for how many, "lines": what each would say alone, "nodes": each one's node,
+	## "details": what Details says of each}.
+	var grouped := {}
+	## Warnings of one kind on many things, likewise.
+	var grouped_warnings := {}
+	## Each problem said for many things, as the lines behind its Details button.
+	var problem_details := {}
 	var problems: Array[String] = []
 	## What the map maker should know, as {"words", "node"}, that doesn't stop the map.
 	var warnings: Array[Dictionary] = []
@@ -174,6 +233,64 @@ class Scene:
 	func problem_on(node: Node, words: String) -> void:
 		problems.append(words)
 		problem_nodes[words] = node
+
+	## A problem on `node` that many things may share: said as `one` if few have it, or once as `many`,
+	## with %d for how many, and `detail` for each behind its Details button: its name, unless said.
+	func problem_among(node: Node, kind: String, one: String, many: String, detail := "") -> void:
+		_add_to(grouped, node, kind, one, many, detail)
+
+	## A warning many things may share, as problem_among.
+	func warning_among(node: Node, kind: String, one: String, many: String, detail := "") -> void:
+		_add_to(grouped_warnings, node, kind, one, many, detail)
+
+	func _add_to(groups: Dictionary, node: Node, kind: String, one: String, many: String, detail: String) -> void:
+		if not groups.has(kind):
+			groups[kind] = {"many": many, "lines": PackedStringArray(), "nodes": [], "details": PackedStringArray()}
+		groups[kind]["lines"].append(one)
+		groups[kind]["nodes"].append(node)
+		groups[kind]["details"].append(detail if not detail.is_empty() else String(node.name))
+
+	## Says the problems and warnings problem_among and warning_among held back.
+	func say_grouped() -> void:
+		for kind: String in grouped:
+			var group: Dictionary = grouped[kind]
+			var lines: PackedStringArray = group["lines"]
+			if lines.size() <= FEW_TO_LIST:
+				for index in lines.size():
+					problem_on(group["nodes"][index], lines[index])
+				continue
+			var words: String = group["many"] % lines.size()
+			problem_on(group["nodes"][0], words)
+			problem_details[words] = group["details"]
+		for kind: String in grouped_warnings:
+			var group: Dictionary = grouped_warnings[kind]
+			var lines: PackedStringArray = group["lines"]
+			if lines.size() <= FEW_TO_LIST:
+				for index in lines.size():
+					warnings.append({"words": lines[index], "node": group["nodes"][index]})
+				continue
+			warnings.append({"words": group["many"] % lines.size(), "node": group["nodes"][0], "details": group["details"]})
+		grouped = {}
+		grouped_warnings = {}
+
+	## What Export did by itself, in one line, or nothing if it did nothing.
+	func changes_words() -> String:
+		var done: Array[String] = []
+		if changes["scatters"] > 0:
+			done.append("made %d scattered mesh%s (MultiMesh) into %d placed copies" % [changes["scatters"], "" if changes["scatters"] == 1 else "es", changes["copies"]])
+		if changes["cut"] > 0:
+			done.append("cut %d mesh%s far wider than a model into %d parts by where they lie" % [changes["cut"], "" if changes["cut"] == 1 else "es", changes["cut_parts"]])
+		if changes["split"] > 0:
+			done.append("split %d model%s with more than %d materials into parts" % [changes["split"], "" if changes["split"] == 1 else "s", MOST_MODEL_MATERIALS])
+		if changes["shrunk"] > 0:
+			var why := "the most the game draws" if picture_side == PICTURE_SIDE_DRAWN else "so that they all fit in what the game takes"
+			done.append("shrank the pictures of %d model%s to %d pixels across, %s" % [changes["shrunk"], "" if changes["shrunk"] == 1 else "s", picture_side, why])
+		var materials: int = model_totals["materials"]
+		if looks.size() < materials:
+			done.append("found the models' %d materials are %d different looks, each drawn once" % [materials, looks.size()])
+		if done.is_empty():
+			return ""
+		return "Export did this itself: %s." % "; ".join(done)
 
 	## Counts a piece or a marker left out, hidden by `hider`, the node whose eye is off.
 	func left_out_hidden(hider: Node, what: String) -> void:
@@ -212,16 +329,22 @@ static func _is_the_games_repository(folder: String) -> bool:
 
 ## Writes the scene under `root` as `out_folder`/<map>.sfm, in place of any it wrote there before.
 ## Gives back {"package": the .sfm it wrote, "sources": what its lists came from, as in Scene}, or
-## {"problems": what stops it, in plain words, "nodes": the node each is on, if it's on one}.
-## "warnings" says what doesn't stop it but is worth knowing, as {"words", "node"}.
+## {"problems": what stops it, in plain words, "nodes": the node each is on, if it's on one, "details": the
+## lines behind a problem said once for many things, and "warnings" if the scene was read}.
+## "warnings" says what doesn't stop it but is worth knowing, as {"words", "node"}, and "details" for one
+## said once for many things. What Export did by itself is the first of them.
 static func export_map(root: Node, out_folder: String) -> Dictionary:
 	if not (root is SmartFellasMap):
 		return {"problems": ["This scene's top node isn't a SmartFellasMap. Open a map's scene first."]}
 	if not root.is_inside_tree():
 		return {"problems": ["The scene isn't open yet, so nothing in it has a place. Open it first."]}
+	_pictures_drawn = {}
+	_materials_drawn = {}
 	var scene := _read_scene(root)
+	_pictures_drawn = {}
+	_materials_drawn = {}
 	if not scene.problems.is_empty():
-		return {"problems": scene.problems, "nodes": scene.problem_nodes}
+		return {"problems": scene.problems, "nodes": scene.problem_nodes, "details": scene.problem_details, "warnings": scene.warnings}
 	var text := _map_text(root, scene)
 	var too_heavy := file_problem(text.to_utf8_buffer().size())
 	if not too_heavy.is_empty():
@@ -239,7 +362,11 @@ static func export_map(root: Node, out_folder: String) -> Dictionary:
 	if not built.is_empty():
 		return {"problems": [built]}
 	_remove_old_package(out_folder.path_join(name))
-	return {"package": package, "sources": scene.sources, "warnings": scene.warnings}
+	var warnings := scene.warnings
+	var changed := scene.changes_words()
+	if not changed.is_empty():
+		warnings.push_front({"words": changed, "node": null})
+	return {"package": package, "sources": scene.sources, "warnings": warnings}
 
 
 ## Where Export puts a package together before packing it: a folder of the add-on's own, never where the
@@ -387,12 +514,21 @@ static func _copy_models(scene: Scene, folder: String) -> String:
 	var made := DirAccess.make_dir_recursive_absolute(assets)
 	if made != OK:
 		return "Can't make the folder %s: %s." % [assets, error_string(made)]
+	var beside := {}
 	for name in scene.models:
 		var source: String = scene.models[name]
 		var bytes: PackedByteArray = scene.built[name] if scene.built.has(name) else FileAccess.get_file_as_bytes(source)
 		if bytes.is_empty():
 			return "Can't read the model %s." % source
+		if scene.built.has(name):
+			var split := pictures_set_beside(bytes)
+			bytes = split["glb"]
+			beside.merge(split["pictures"])
 		var written := _write_file(assets.path_join(name), bytes)
+		if not written.is_empty():
+			return written
+	for name: String in beside:
+		var written := _write_file(assets.path_join(name), beside[name])
 		if not written.is_empty():
 			return written
 	for name in scene.pictures:
@@ -400,6 +536,102 @@ static func _copy_models(scene: Scene, folder: String) -> String:
 		if not written.is_empty():
 			return written
 	return ""
+
+
+## `value` with every whole number in it an integer: Godot reads every JSON number as a float and would
+## write 5 back as 5.0, which glTF's counts and indices must not be.
+static func _whole_numbers_as_integers(value: Variant) -> Variant:
+	if value is float and is_finite(value) and absf(value) < 9.0e15 and value == floorf(value):
+		return int(value)
+	if value is Array:
+		return value.map(_whole_numbers_as_integers)
+	if value is Dictionary:
+		var each := {}
+		for key: Variant in value:
+			each[key] = _whole_numbers_as_integers(value[key])
+		return each
+	return value
+
+
+## A .glb Export made, with its PNG pictures taken out to lie beside it in assets/, each named by what's in
+## it: {"glb": the model, "pictures": each picture's bytes by its name}. A picture many models share is then
+## one file in the package, not one inside each model. A .glb it can't read is given back as it is.
+static func pictures_set_beside(bytes: PackedByteArray) -> Dictionary:
+	var unchanged := {"glb": bytes, "pictures": {}}
+	var description := glb_description(bytes)
+	var views: Array = description.get("bufferViews", [])
+	var images: Array = description.get("images", [])
+	if description.is_empty() or images.is_empty() or description.get("buffers", []).size() != 1:
+		return unchanged
+	var json_length := bytes.decode_u32(12)
+	var bin_start := 20 + json_length + 8
+	if bytes.size() < bin_start:
+		return unchanged
+	var bin := bytes.slice(bin_start, bin_start + bytes.decode_u32(20 + json_length))
+	var pictures := {}
+	var dropped := {}
+	for image: Dictionary in images:
+		var view: int = image.get("bufferView", -1)
+		if view < 0 or view >= views.size():
+			continue
+		var start: int = views[view].get("byteOffset", 0)
+		var picture := bin.slice(start, start + int(views[view].get("byteLength", 0)))
+		if picture.size() < 8 or picture.slice(1, 4).get_string_from_ascii() != "PNG":
+			continue
+		var name := "picture_%s.png" % _md5_of(picture).substr(0, 16)
+		pictures[name] = picture
+		image.erase("bufferView")
+		image.erase("mimeType")
+		image["uri"] = name
+		dropped[view] = true
+	if dropped.is_empty():
+		return unchanged
+	var kept := PackedByteArray()
+	var new_index := {}
+	var new_views: Array = []
+	for index in views.size():
+		if dropped.has(index):
+			continue
+		var view: Dictionary = views[index]
+		var start: int = view.get("byteOffset", 0)
+		while kept.size() % 4 != 0:
+			kept.append(0)
+		view["byteOffset"] = kept.size()
+		kept.append_array(bin.slice(start, start + int(view.get("byteLength", 0))))
+		new_index[index] = new_views.size()
+		new_views.append(view)
+	for accessor: Dictionary in description.get("accessors", []):
+		if accessor.has("bufferView"):
+			accessor["bufferView"] = new_index.get(int(accessor["bufferView"]), 0)
+		var sparse: Dictionary = accessor.get("sparse", {})
+		for part in ["indices", "values"]:
+			if sparse.has(part):
+				sparse[part]["bufferView"] = new_index.get(int(sparse[part]["bufferView"]), 0)
+	for image: Dictionary in images:
+		if image.has("bufferView"):
+			image["bufferView"] = new_index.get(int(image["bufferView"]), 0)
+	while kept.size() % 4 != 0:
+		kept.append(0)
+	description["bufferViews"] = new_views
+	description["buffers"][0]["byteLength"] = kept.size()
+	var text := JSON.stringify(_whole_numbers_as_integers(description), "", false, true).to_utf8_buffer()
+	while text.size() % 4 != 0:
+		text.append(0x20)
+	var glb := PackedByteArray()
+	glb.resize(20)
+	glb.encode_u32(0, 0x46546C67)
+	glb.encode_u32(4, 2)
+	glb.encode_u32(8, 12 + 8 + text.size() + 8 + kept.size())
+	glb.encode_u32(12, text.size())
+	glb.encode_u32(16, 0x4E4F534A)
+	glb.append_array(text)
+	var bin_header := PackedByteArray()
+	bin_header.resize(8)
+	bin_header.encode_u32(0, kept.size())
+	bin_header.encode_u32(4, 0x004E4942)
+	glb.append_array(bin_header)
+	glb.append_array(kept)
+	return {"glb": glb, "pictures": pictures}
 
 
 static func _write_file(path: String, bytes: PackedByteArray) -> String:
@@ -588,7 +820,7 @@ static func _collect_left_out(node: Node, found: Array[Dictionary]) -> void:
 		if not path.is_empty() and not _holds_kit_pieces(child) and meshes_in(child).is_empty():
 			found.append({"node": child, "what": EMPTY_SCENE})
 			continue
-		if child is GeometryInstance3D and not child is MeshInstance3D:
+		if child is GeometryInstance3D and not child is MeshInstance3D and not _is_scatter(child):
 			found.append({"node": child, "what": child.get_class()})
 		_collect_left_out(child, found)
 
@@ -643,18 +875,59 @@ static func _folder_name(map_name: String) -> String:
 	return folder + "_map" if folder in WINDOWS_NAMES else folder
 
 
+## Reads the scene with its own models' pictures as big as the game draws them, or, if they come to more
+## than the game takes, again with them all made as big as should fit, half across holding a quarter of the
+## pixels, and smaller again while they still come to too much, down to SMALLEST_PICTURE_SIDE.
 static func _read_scene(root: SmartFellasMap) -> Scene:
+	var scene := _read_scene_with(root, PICTURE_SIDE_DRAWN)
+	var over := _pictures_over(scene)
+	if over <= 1.0:
+		return scene
+	var side := PICTURE_SIDE_DRAWN
+	while over > 1.0 and side > SMALLEST_PICTURE_SIDE:
+		side /= 2
+		over /= 4.0
+	scene = _read_scene_with(root, side)
+	# Pictures already small, or shared, shrink less than a quarter, so the first guess can fall short.
+	while _pictures_over(scene) > 1.0 and side > SMALLEST_PICTURE_SIDE:
+		side /= 2
+		scene = _read_scene_with(root, side)
+	return scene
+
+
+## How many times what the scene's own models' pictures come to the game takes, by pixels or by bytes,
+## whichever is more.
+static func _pictures_over(scene: Scene) -> float:
+	return maxf(float(scene.model_totals["picture_pixels"]) / picture_pixels_taken, float(scene.model_totals["picture_bytes"]) / MOST_MAP_PICTURE_BYTES)
+
+
+## The scene, read with every picture of its own models made no more than `picture_side` across.
+static func _read_scene_with(root: SmartFellasMap, picture_side: int) -> Scene:
 	var scene := read_rules(root)
+	scene.picture_side = picture_side
 	for found in kit_pieces(root):
 		_read_piece(found["node"], found["kit"], scene)
 	_read_own_models(root, scene)
+	_read_scatters(root, scene)
+	_check_model_totals(scene)
 	_read_painted(root, scene)
+	_check_placed_triangles(scene)
 	_check_piece_names(scene)
 	scene.finder = load("res://addons/smart_fellas_maps/surface_finder.gd").new(root)
 	_warn_of_spawns_over_nothing(root, scene)
 	_warn_of_food_over_nothing(root, scene)
-	if scene.pieces.size() > MOST_PIECES:
-		scene.problems.append("The map places %d pieces, and the most a map can place is %d. Remove some." % [scene.pieces.size(), MOST_PIECES])
+	var kit := 0
+	for piece in scene.pieces:
+		if not piece.has("model"):
+			kit += 1
+	if kit > MOST_PIECES:
+		scene.problems.append("The map places %d pieces of the kit, and the most a map can place is %d. Remove some." % [kit, MOST_PIECES])
+	if scene.pieces.size() > MOST_ALL_PIECES:
+		var copies := ""
+		if scene.changes["copies"] > 0:
+			copies = " %d of them are copies of scattered meshes (MultiMesh): lower their instance count." % scene.changes["copies"]
+		scene.problems.append("The map places %d pieces in all, and the most a map can place is %d. Remove some.%s" % [scene.pieces.size(), MOST_ALL_PIECES, copies])
+	scene.say_grouped()
 	return scene
 
 
@@ -1066,10 +1339,17 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 	for found in own_model_pieces(root):
 		var node: Node3D = found["node"]
 		var path: String = found["path"]
+		if not names_of.has(path) and found.has("alone") and _too_wide(node):
+			var parts := _cut_wide_mesh(node, scene)
+			if parts > 0:
+				scene.changes["cut"] += 1
+				scene.changes["cut_parts"] += parts
+			continue
 		if not names_of.has(path):
-			var name := _free_model_name(model_name(path if not found.has("alone") else String(node.name)), scene)
+			var alone: bool = found.has("alone")
+			var source := ProjectSettings.globalize_path(path) if not alone else path
+			var called := "%s's model %s" % [node.name, path.get_file()] if not alone else String(node.name)
 			var bytes := PackedByteArray()
-			var source := ProjectSettings.globalize_path(path) if not found.has("alone") else path
 			if found["made"] == "copied":
 				bytes = FileAccess.get_file_as_bytes(source)
 				if bytes.is_empty():
@@ -1078,59 +1358,203 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 				if glb_description(bytes).is_empty():
 					scene.problem_on(node, "%s's model %s isn't a .glb the game can read. Export it again from Blender as glTF Binary (.glb)." % [node.name, path.get_file()])
 					continue
-				# Pictures the game won't take, such as JPEG, as models from Sketchfab often have, or ones too
-				# big, are made into ones it will.
+				# Pictures the game won't take, such as JPEG, as models from Sketchfab often have, or ones
+				# bigger than it draws, are made into ones it will.
 				# So is one that needs a glTF extension the game can't read, such as WebP pictures or packed
 				# meshes, which Godot can.
-				if not _pictures_problem(bytes, source).is_empty() or not glb_description(bytes).get("extensionsRequired", []).is_empty():
+				# So is one with more pictures than the game takes in a model, as one with bump and shine
+				# pictures has, which the game never draws.
+				var big := _widest_picture(bytes, source) > scene.picture_side
+				var tally := model_tally(glb_description(bytes))
+				var crowded: bool = tally["pictures"] > MOST_MODEL_PICTURES or tally["materials"] > MOST_MODEL_MATERIALS
+				if big or crowded or not _pictures_problem(bytes, source).is_empty() or not glb_description(bytes).get("extensionsRequired", []).is_empty():
 					bytes = PackedByteArray()
+			var base := model_name(path if not alone else String(node.name))
+			var name := _free_model_name(base, scene)
+			var names: Array[String] = [name]
 			if bytes.is_empty():
-				bytes = built_glb(node, found.has("alone"))
-				if bytes.is_empty():
+				var split := split_glbs(node, alone, scene.picture_side, scene.changes)
+				var made: Array[PackedByteArray] = split["glbs"]
+				if made.is_empty():
 					scene.problem_on(node, "%s can't be made into a model for the game. Export it from Blender as glTF Binary (.glb), copy that into this project, and drag it in instead." % node.name)
 					continue
-				scene.built[name] = bytes
-			if bytes.size() > MOST_MODEL_BYTES:
-				scene.problem_on(node, "%s's model %s is %.1f MB. The most is 64 MB. Make it smaller." % [node.name, path.get_file(), bytes.size() / 1048576.0])
-				continue
-			var called := "%s's model %s" % [node.name, path.get_file()] if not found.has("alone") else String(node.name)
-			var tally := model_tally(glb_description(bytes))
-			var too_much := _model_limits_problem(tally)
-			if too_much.is_empty():
-				too_much = _pictures_problem(bytes, source)
-			if not too_much.is_empty():
-				scene.problem_on(node, "%s %s" % [called, too_much])
-				continue
-			for key: String in scene.model_totals:
-				scene.model_totals[key] += tally[key] if key != "picture_bytes" else _picture_bytes(bytes, source)
-			if not scene.built.has(name) and not _read_model_pictures(node, source, bytes, scene):
-				continue
-			if not model_has_a_picture(bytes):
-				scene.warnings.append({"words": "%s has no picture, only colours. An octopus copying it wears its plain colour." % node.name, "node": node})
-			names_of[path] = name
-			scene.models[name] = source
-		_read_piece(node, "", scene, names_of[path])
+				if made.size() > 1:
+					scene.changes["split"] += 1
+				var taken := true
+				for index in made.size():
+					if index > 0:
+						names.append(_free_model_name("%s_part%d.glb" % [base.get_basename(), index + 1], scene))
+					scene.built[names[index]] = made[index]
+					scene.model_middles[names[index]] = split["middle"]
+					taken = _take_model(node, called, names[index], source, made[index], scene) and taken
+				if not taken:
+					continue
+			else:
+				if not _take_model(node, called, name, source, bytes, scene):
+					continue
+				if not _read_model_pictures(node, source, bytes, scene):
+					continue
+			names_of[path] = names
+		for index in names_of[path].size():
+			_read_piece(node, "", scene, names_of[path][index], index == 0)
+	# What maps can't use yet is left out with a word, and the map exports without it.
 	for other in left_out(root):
-		if other["what"] == EMPTY_SCENE:
-			scene.problem_on(other["node"], "%s is a scene with no mesh showing in it, so nothing of it would come out of Export. Show its meshes, or delete it." % other["node"].name)
-		else:
-			scene.problem_on(other["node"], "%s is a %s, which the game can't draw. Only kit pieces and models come out of Export. Turn it into a mesh (for a CSG shape: select it, then CSG > Bake Mesh Instance), or delete it." % [other["node"].name, other["what"]])
-	if scene.models.size() > MOST_MODELS:
-		scene.problems.append("The map uses %d models of its own. The most is %d. Remove some." % [scene.models.size(), MOST_MODELS])
-	_check_model_totals(scene)
+		var node: Node = other["node"]
+		var what: String = other["what"]
+		var words := _left_out_words(node, what)
+		# GPU and CPU particles are one line, as are CSG boxes and spheres.
+		var kind := "particles" if what.contains("Particles") else "CSG" if what.begins_with("CSG") else what
+		scene.warning_among(node, kind, words[0], words[1])
+
+
+## What Export says of `node`, of the class `what`, which it leaves out: as [words for it alone, words with
+## %d for how many].
+static func _left_out_words(node: Node, what: String) -> Array[String]:
+	if what == EMPTY_SCENE:
+		return [
+			"%s is a scene with no mesh showing in it, so nothing of it comes out." % node.name,
+			"%d scenes have no mesh showing in them, so nothing of them comes out.",
+		]
+	if what.begins_with("CSG"):
+		return [
+			"%s is a CSG shape, so it was left out. To keep it, select it, then CSG > Bake Mesh Instance." % node.name,
+			"%d CSG shapes were left out. To keep one, select it, then CSG > Bake Mesh Instance.",
+		]
+	if what.contains("Particles"):
+		return [
+			"%s is a particle system, so it was left out (maps can't use them yet)." % node.name,
+			"%d particle systems were left out (maps can't use them yet).",
+		]
+	return [
+		"%s is a %s, so it was left out (maps can't use them yet)." % [node.name, what],
+		"%%d nodes are %s, so they were left out (maps can't use them yet)." % what,
+	]
+
+
+## Takes `bytes` as the map's own model `name`, made from `source`, for `node`, which `called` names, once it
+## has checked it as the game would. Gives back whether it was taken.
+static func _take_model(node: Node, called: String, name: String, source: String, bytes: PackedByteArray, scene: Scene) -> bool:
+	if bytes.size() > MOST_MODEL_BYTES:
+		scene.problem_on(node, "%s is %.1f MB. The most is 64 MB. Make it smaller." % [called, bytes.size() / 1048576.0])
+		return false
+	var description := glb_description(bytes)
+	var tally := model_tally(description)
+	var too_much := _model_limits_problem(tally)
+	if too_much.is_empty():
+		too_much = _pictures_problem(bytes, source)
+	if too_much.is_empty() and model_reach(description) > MOST_MODEL_REACH:
+		too_much = _reach_problem(model_reach(description))
+	if not too_much.is_empty():
+		var many := _many_models_over(too_much)
+		scene.problem_among(node, many, "%s %s" % [called, too_much], many, "%s %s" % [called, too_much])
+		return false
+	for key: String in ["triangles", "corners", "materials"]:
+		scene.model_totals[key] += tally[key]
+	scene.model_triangles[name] = tally["triangles"]
+	var pictures := _colour_pictures(bytes, source)
+	for look in _looks_of(description, tally["used"], pictures):
+		scene.looks[look] = true
+	for picture in pictures:
+		var md5 := _md5_of(picture)
+		scene.picture_weights[md5] = picture.size()
+		scene.picture_pixels[md5] = _pixels_drawn(picture)
+	var weight := 0
+	for each: int in scene.picture_weights.values():
+		weight += each
+	scene.model_totals["picture_bytes"] = weight
+	var pixels := 0
+	for each: int in scene.picture_pixels.values():
+		pixels += each
+	scene.model_totals["picture_pixels"] = pixels
+	if not model_has_a_picture(bytes):
+		scene.warning_among(node, "no picture", "%s has no picture, only colours. An octopus copying it wears its plain colour." % node.name, "%d models have no picture, only colours. An octopus copying one wears its plain colour.")
+	scene.models[name] = source
+	return true
+
+
+## How many pixels the game draws a PNG with: no more than PICTURE_SIDE_DRAWN across, as it shrinks one.
+static func _pixels_drawn(png: PackedByteArray) -> int:
+	if png.size() < 24 or png.slice(1, 4).get_string_from_ascii() != "PNG":
+		return 0
+	var width := _big_endian(png, 16)
+	var height := _big_endian(png, 20)
+	var widest := maxi(maxi(width, height), 1)
+	var shrink := minf(1.0, float(PICTURE_SIDE_DRAWN) / widest)
+	return maxi(roundi(width * shrink), 1) * maxi(roundi(height * shrink), 1)
+
+
+static func _md5_of(bytes: PackedByteArray) -> String:
+	var hashing := HashingContext.new()
+	hashing.start(HashingContext.HASH_MD5)
+	hashing.update(bytes)
+	return hashing.finish().hex_encode()
+
+
+## How each material a model draws with looks, as the game tells looks apart: two materials that look the
+## same are one surface, however many models they're in. `used` is which materials its meshes draw with, and
+## `pictures` the colour pictures, one for each material that has one, in the order of its materials.
+static func _looks_of(description: Dictionary, used: Array, pictures: Array[PackedByteArray]) -> Array[String]:
+	var materials: Array = description.get("materials", [])
+	var textures: Array = description.get("textures", [])
+	var picture_of := {}
+	var next := 0
+	for index in materials.size():
+		var texture: int = materials[index].get("pbrMetallicRoughness", {}).get("baseColorTexture", {}).get("index", -1)
+		if texture >= 0 and texture < textures.size() and textures[texture].get("source", -1) >= 0 and next < pictures.size():
+			picture_of[index] = _md5_of(pictures[next])
+			next += 1
+	var looks: Array[String] = []
+	for index: int in used:
+		if index < 0 or index >= materials.size():
+			looks.append("plain")
+			continue
+		var material: Dictionary = materials[index]
+		var pbr: Dictionary = material.get("pbrMetallicRoughness", {})
+		var mode: String = material.get("alphaMode", "OPAQUE")
+		looks.append(str([
+			pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0]), picture_of.get(index, ""), pbr.get("metallicFactor", 1.0),
+			pbr.get("roughnessFactor", 1.0), material.get("doubleSided", false), material.get("alphaCutoff", 0.5) if mode != "OPAQUE" else null,
+		]))
+	return looks
 
 
 ## The game's limits on all the map's own models together.
 static func _check_model_totals(scene: Scene) -> void:
 	var totals: Dictionary = scene.model_totals
-	if totals["materials"] > MOST_MAP_MATERIALS:
-		scene.problems.append("The map's own models use %d materials between them, and the game takes %d. Share materials between models, or remove some." % [totals["materials"], MOST_MAP_MATERIALS])
+	if scene.models.size() > MOST_MODELS:
+		scene.problems.append("The map uses %d models of its own. The most is %d. Remove some, or use one model in more places." % [scene.models.size(), MOST_MODELS])
+	# map.ron, the assets/ folder, the models and the pictures beside them.
+	var files: int = 2 + scene.models.size() + scene.picture_weights.size()
+	if files > MOST_ENTRIES:
+		scene.problems.append("The map's package would hold %d files, and the game takes %d. Use fewer models of your own, or share pictures between them." % [files, MOST_ENTRIES])
+	if scene.looks.size() > MOST_MAP_MATERIALS:
+		scene.problems.append("The map's own models use %d different materials between them, and the game takes %d. Share materials between models, or remove some." % [scene.looks.size(), MOST_MAP_MATERIALS])
 	if totals["triangles"] > MOST_MAP_TRIANGLES:
 		scene.problems.append("The map's own models have %d triangles between them, and the game takes %d. Simplify them." % [totals["triangles"], MOST_MAP_TRIANGLES])
 	if totals["corners"] > MOST_MAP_CORNERS:
 		scene.problems.append("The map's own models have %d corners between them, and the game takes %d. Simplify them." % [totals["corners"], MOST_MAP_CORNERS])
+	if totals["picture_pixels"] > picture_pixels_taken:
+		scene.problems.append("The map's own models' pictures hold %d million pixels between them, even made %d pixels across, and the game takes %d million. Share pictures between models, or remove some." % [totals["picture_pixels"] / 1000000, scene.picture_side, picture_pixels_taken / 1000000])
 	if totals["picture_bytes"] > MOST_MAP_PICTURE_BYTES:
-		scene.problems.append("The map's own models' pictures come to %.1f MB between them, and the game takes %d MB. Make them smaller, or share pictures between models." % [totals["picture_bytes"] / 1048576.0, MOST_MAP_PICTURE_BYTES / 1048576])
+		scene.problems.append("The map's own models' pictures come to %.1f MB between them, even made %d pixels across, and the game takes %d MB. Share pictures between models, or remove some." % [totals["picture_bytes"] / 1048576.0, scene.picture_side, MOST_MAP_PICTURE_BYTES / 1048576])
+
+
+## The game's limit on what all the pieces made of the map's own models draw.
+static func _check_placed_triangles(scene: Scene) -> void:
+	var drawn := 0
+	var by_model := {}
+	for piece in scene.pieces:
+		if piece.has("model"):
+			var triangles: int = scene.model_triangles.get(piece["model"], 0)
+			drawn += triangles
+			by_model[piece["model"]] = by_model.get(piece["model"], 0) + triangles
+	if drawn <= MOST_PLACED_TRIANGLES:
+		return
+	var most: String = by_model.keys()[0]
+	for name: String in by_model:
+		if by_model[name] > by_model[most]:
+			most = name
+	scene.problems.append("The pieces made of the map's own models draw %d triangles in all, and the game takes %d. Place fewer of them, or simplify them. The most is from %s (%d triangles placed)." % [drawn, MOST_PLACED_TRIANGLES, most.get_basename(), by_model[most]])
 
 
 ## `wanted`, or the same with a number after it if another model has that name already.
@@ -1144,10 +1568,12 @@ static func _free_model_name(wanted: String, scene: Scene) -> String:
 
 
 ## What a .glb holds as the game counts it, object by object from its scene, so that a mesh drawn twice
-## counts twice: {"triangles", "corners", "materials", "pictures", "picture_bytes"}, the last two as the
-## materials it draws with refer to them. The same walk as src/map/model.rs.
+## counts twice: {"triangles", "corners", "materials", "pictures", "picture_bytes", "used", "surfaces"}, the
+## last the most surfaces any one of its meshes has, the pictures as
+## the materials it draws with refer to them, and "used" which materials those are. The same walk as
+## src/map/model.rs.
 static func model_tally(description: Dictionary) -> Dictionary:
-	var tally := {"triangles": 0, "corners": 0, "materials": 0, "pictures": description.get("images", []).size(), "picture_bytes": 0}
+	var tally := {"triangles": 0, "corners": 0, "materials": 0, "pictures": description.get("images", []).size(), "picture_bytes": 0, "surfaces": 0}
 	var accessors: Array = description.get("accessors", [])
 	var meshes: Array = description.get("meshes", [])
 	var nodes: Array = description.get("nodes", [])
@@ -1166,6 +1592,7 @@ static func model_tally(description: Dictionary) -> Dictionary:
 		var mesh: int = node.get("mesh", -1)
 		if mesh < 0 or mesh >= meshes.size():
 			continue
+		tally["surfaces"] = maxi(tally["surfaces"], meshes[mesh].get("primitives", []).size())
 		for primitive: Dictionary in meshes[mesh].get("primitives", []):
 			var position: int = primitive.get("attributes", {}).get("POSITION", -1)
 			var count: int = accessors[position].get("count", 0) if position >= 0 and position < accessors.size() else 0
@@ -1174,7 +1601,79 @@ static func model_tally(description: Dictionary) -> Dictionary:
 			tally["triangles"] += (accessors[indices].get("count", 0) if indices >= 0 and indices < accessors.size() else count) / 3
 			used[primitive.get("material", -1)] = true
 	tally["materials"] = used.size()
+	tally["used"] = used.keys()
 	return tally
+
+
+## How far a .glb reaches from its middle along any one way, in metres, as the game's checker measures it:
+## each mesh's box where its nodes put it.
+static func model_reach(description: Dictionary) -> float:
+	var nodes: Array = description.get("nodes", [])
+	var meshes: Array = description.get("meshes", [])
+	var accessors: Array = description.get("accessors", [])
+	var scenes: Array = description.get("scenes", [])
+	var index: int = description.get("scene", 0)
+	var waiting: Array = []
+	for top in (scenes[index].get("nodes", []) if index >= 0 and index < scenes.size() else []):
+		waiting.append([int(top), Transform3D.IDENTITY])
+	var reach := 0.0
+	var seen := {}
+	while not waiting.is_empty():
+		var next: Array = waiting.pop_back()
+		var at: int = next[0]
+		if seen.has(at) or at < 0 or at >= nodes.size():
+			continue
+		seen[at] = true
+		var node: Dictionary = nodes[at]
+		var place: Transform3D = next[1] * _node_place(node)
+		for child in node.get("children", []):
+			waiting.append([int(child), place])
+		var mesh: int = node.get("mesh", -1)
+		if mesh < 0 or mesh >= meshes.size():
+			continue
+		for primitive: Dictionary in meshes[mesh].get("primitives", []):
+			var position: int = primitive.get("attributes", {}).get("POSITION", -1)
+			if position < 0 or position >= accessors.size() or not accessors[position].has("min"):
+				continue
+			var low: Array = accessors[position]["min"]
+			var high: Array = accessors[position]["max"]
+			for corner in 8:
+				var point := Vector3(high[0] if corner & 1 else low[0], high[1] if corner & 2 else low[1], high[2] if corner & 4 else low[2])
+				var placed := place * point
+				reach = maxf(reach, maxf(absf(placed.x), maxf(absf(placed.y), absf(placed.z))))
+	return reach
+
+
+## Where a glTF node sits under its parent.
+static func _node_place(node: Dictionary) -> Transform3D:
+	if node.has("matrix"):
+		var m: Array = node["matrix"]
+		return Transform3D(Vector3(m[0], m[1], m[2]), Vector3(m[4], m[5], m[6]), Vector3(m[8], m[9], m[10]), Vector3(m[12], m[13], m[14]))
+	var t: Array = node.get("translation", [0.0, 0.0, 0.0])
+	var r: Array = node.get("rotation", [0.0, 0.0, 0.0, 1.0])
+	var k: Array = node.get("scale", [1.0, 1.0, 1.0])
+	var basis := Basis(Quaternion(r[0], r[1], r[2], r[3]).normalized()).scaled(Vector3(k[0], k[1], k[2]))
+	return Transform3D(basis, Vector3(t[0], t[1], t[2]))
+
+
+## What Export says, with %d for how many, of many models over the limit `too_much`, as
+## _model_limits_problem, _pictures_problem or _take_model says it of one.
+static func _many_models_over(too_much: String) -> String:
+	var what := "are over a limit the game has for one model"
+	for kind: String in ["triangles", "corners", "materials", "pictures"]:
+		if too_much.begins_with("has ") and too_much.get_slice(",", 0).ends_with(" " + kind):
+			what = "have more %s than the game takes in one model" % kind
+	if too_much.begins_with("has a mesh of"):
+		what = "have a mesh of more surfaces than the game takes"
+	elif too_much.begins_with("has a picture that isn't a PNG"):
+		what = "have a picture that isn't a PNG"
+	elif too_much.begins_with("has a picture of"):
+		what = "have a picture heavier than the game takes"
+	elif too_much.begins_with("has a picture"):
+		what = "have a picture bigger than the game takes"
+	elif too_much.begins_with("reaches"):
+		what = "reach further from their middle than the game takes"
+	return "%%d models %s. Details says which, and what to do." % what
 
 
 ## What the game's checker would refuse in a model that counts up to `tally`, in plain words ending in a
@@ -1186,6 +1685,8 @@ static func _model_limits_problem(tally: Dictionary) -> String:
 		return "has %d corners, and the game takes at most %d in one model. Simplify it (in Blender, the Decimate modifier)." % [tally["corners"], MOST_MODEL_CORNERS]
 	if tally["materials"] > MOST_MODEL_MATERIALS:
 		return "has %d materials, and the game takes at most %d. Join some in Blender." % [tally["materials"], MOST_MODEL_MATERIALS]
+	if tally["surfaces"] > MOST_PRIMITIVES:
+		return "has a mesh of %d surfaces, and the game takes at most %d. Join some in Blender." % [tally["surfaces"], MOST_PRIMITIVES]
 	if tally["pictures"] > MOST_MODEL_PICTURES:
 		return "has %d pictures, and the game takes at most %d. Join some in Blender." % [tally["pictures"], MOST_MODEL_PICTURES]
 	return ""
@@ -1234,54 +1735,149 @@ static func _colour_pictures(bytes: PackedByteArray, source: String) -> Array[Pa
 ## nothing: one that isn't a PNG, or one too big.
 static func _pictures_problem(bytes: PackedByteArray, source: String) -> String:
 	for picture in _colour_pictures(bytes, source):
-		if picture.size() < 24 or picture.slice(1, 4).get_string_from_ascii() != "PNG":
-			return "has a picture that isn't a PNG. Save its pictures as PNG in Blender, then export it again."
-		var width := (picture[16] << 24) | (picture[17] << 16) | (picture[18] << 8) | picture[19]
-		var height := (picture[20] << 24) | (picture[21] << 16) | (picture[22] << 8) | picture[23]
-		if width > MOST_PICTURE_SIDE or height > MOST_PICTURE_SIDE:
-			return "has a picture %d x %d, and the game takes at most %d x %d. Make it smaller." % [width, height, MOST_PICTURE_SIDE, MOST_PICTURE_SIDE]
-		if picture.size() > MOST_PICTURE_BYTES:
-			return "has a picture of %.1f MB, and the game takes at most 8 MB. Make it smaller." % (picture.size() / 1048576.0)
+		var problem := _picture_problem(picture)
+		if not problem.is_empty():
+			return problem
 	return ""
 
 
-## How much a .glb's pictures weigh, as the game adds them up: once for each material drawn with one.
-static func _picture_bytes(bytes: PackedByteArray, source: String) -> int:
-	var total := 0
+## What the game's checker would refuse in one picture of a model, in plain words, or nothing.
+static func _picture_problem(picture: PackedByteArray) -> String:
+	if picture.size() < 24 or picture.slice(1, 4).get_string_from_ascii() != "PNG":
+		return "has a picture that isn't a PNG. Save its pictures as PNG in Blender, then export it again."
+	var width := _big_endian(picture, 16)
+	var height := _big_endian(picture, 20)
+	if width > MOST_PICTURE_SIDE or height > MOST_PICTURE_SIDE:
+		return "has a picture %d x %d, and the game takes at most %d x %d. Make it smaller." % [width, height, MOST_PICTURE_SIDE, MOST_PICTURE_SIDE]
+	if picture.size() > MOST_PICTURE_BYTES:
+		return "has a picture of %.1f MB, and the game takes at most 8 MB. Make it smaller." % (picture.size() / 1048576.0)
+	return ""
+
+
+## What Export says of a model reaching `reach` metres from its middle, past MOST_MODEL_REACH.
+static func _reach_problem(reach: float) -> String:
+	return "reaches %.0f m from its middle, and the game takes %.0f m. Cut it into smaller parts in Blender." % [reach, MOST_MODEL_REACH]
+
+
+## How many pixels across the widest or tallest of a .glb's colour pictures is, if they're PNGs.
+static func _widest_picture(bytes: PackedByteArray, source: String) -> int:
+	var widest := 0
 	for picture in _colour_pictures(bytes, source):
-		total += picture.size()
-	return total
+		if picture.size() >= 24 and picture.slice(1, 4).get_string_from_ascii() == "PNG":
+			widest = maxi(widest, maxi(_big_endian(picture, 16), _big_endian(picture, 20)))
+	return widest
+
+
+## The number in the four bytes of `bytes` from `at`, biggest first, as a PNG keeps its sizes.
+static func _big_endian(bytes: PackedByteArray, at: int) -> int:
+	return (bytes[at] << 24) | (bytes[at + 1] << 16) | (bytes[at + 2] << 8) | bytes[at + 3]
 
 
 ## Takes off what only draws a mesh here: the editor's underwater preview, or any shader, which the game
-## never draws. What it's made of underneath is what the game wears.
+## never draws, and every picture but the colour one, which is all the game reads. What it's made of
+## underneath is what the game wears.
 ##
-## A picture bigger than the game draws is made that size, and one Godot keeps packed for the graphics
-## card is unpacked, so that Godot can write it as a PNG.
-static func _undress(part: MeshInstance3D) -> void:
+## A picture more than `side` pixels across is made that size, and one Godot keeps packed for the graphics
+## card is unpacked, so that Godot can write it as a PNG. Gives back whether it shrank one.
+static func _undress(part: MeshInstance3D, side: int) -> bool:
 	if part.material_override != null and not part.material_override is BaseMaterial3D:
 		part.material_override = null
 	for surface in part.get_surface_override_material_count():
 		var over := part.get_surface_override_material(surface)
 		if over != null and not over is BaseMaterial3D:
 			part.set_surface_override_material(surface, null)
-	# One material laid over the whole mesh wins over each surface's, so it's the one shrunk.
+	# One material laid over the whole mesh wins over each surface's, so it's the one dressed.
 	if part.material_override != null:
-		var shrunk := _with_picture_drawn(part.material_override)
-		if shrunk != null:
-			part.material_override = shrunk
-		return
+		var shrunk := _widest(part.material_override) > side
+		part.material_override = _drawn_material(part.material_override, side)
+		return shrunk
+	var any := false
 	for surface in part.get_surface_override_material_count():
-		var shrunk := _with_picture_drawn(part.get_active_material(surface))
-		if shrunk != null:
-			part.set_surface_override_material(surface, shrunk)
+		var material := part.get_active_material(surface)
+		if material is BaseMaterial3D:
+			any = any or _widest(material) > side
+			part.set_surface_override_material(surface, _drawn_material(material, side))
+	return any
 
 
-## A copy of `material` with its colour picture unpacked and no bigger than the game draws, or null if it
-## needs neither.
-static func _with_picture_drawn(material: Material) -> BaseMaterial3D:
+## Joins the surfaces of `part`'s mesh that are drawn with the same material into one, as one draw: the
+## game reads at most MOST_PRIMITIVES surfaces in a mesh, and a mesh imported from another game can have many
+## surfaces of a few materials. Only meshes of triangles are joined.
+static func _join_same_materials(part: MeshInstance3D) -> void:
+	if not part.mesh is ArrayMesh:
+		return
+	var mesh: ArrayMesh = part.mesh
+	var groups := {}
+	var order: Array[Material] = []
+	for surface in mesh.get_surface_count():
+		if mesh.surface_get_primitive_type(surface) != Mesh.PRIMITIVE_TRIANGLES:
+			return
+		var material := part.get_active_material(surface)
+		if not groups.has(material):
+			groups[material] = []
+			order.append(material)
+		groups[material].append(surface)
+	if order.size() == mesh.get_surface_count():
+		return
+	var joined := ArrayMesh.new()
+	for material in order:
+		var tool := SurfaceTool.new()
+		for surface: int in groups[material]:
+			tool.append_from(mesh, surface, Transform3D.IDENTITY)
+		tool.commit(joined)
+		joined.surface_set_material(joined.get_surface_count() - 1, material)
+	part.material_override = null
+	part.mesh = joined
+	for surface in joined.get_surface_count():
+		part.set_surface_override_material(surface, null)
+
+
+## Materials made ready for a .glb, by the material they were made from and the most pixels across, so
+## that surfaces sharing a material still share one in the .glb. Emptied at the start of each export.
+static var _materials_drawn := {}
+
+
+## `material` as the game draws it: only its colour picture, unpacked and no more than `side` across.
+static func _drawn_material(material: BaseMaterial3D, side: int) -> BaseMaterial3D:
+	var key := "%d %d" % [material.get_instance_id(), side]
+	if _materials_drawn.has(key):
+		return _materials_drawn[key]
+	var drawn := _with_picture_drawn(material, side)
+	if drawn == null:
+		drawn = material.duplicate()
+	for texture in BaseMaterial3D.TEXTURE_MAX:
+		if texture != BaseMaterial3D.TEXTURE_ALBEDO:
+			drawn.set_texture(texture, null)
+	_materials_drawn[key] = drawn
+	return drawn
+
+
+## How many pixels across the widest side of a material's colour picture is, or 0 if it has none.
+static func _widest(material: Material) -> int:
+	if not material is BaseMaterial3D or (material as BaseMaterial3D).albedo_texture == null:
+		return 0
+	var texture: Texture2D = (material as BaseMaterial3D).albedo_texture
+	return maxi(texture.get_width(), texture.get_height())
+
+
+## Pictures made ready for a .glb, by the picture they were made from and the most pixels across: a picture
+## many materials share is shrunk once. Emptied at the start of each export.
+static var _pictures_drawn := {}
+
+
+## A copy of `material` with its colour picture unpacked and no more than `side` pixels across, or null if
+## it needs neither.
+static func _with_picture_drawn(material: Material, side: int) -> BaseMaterial3D:
 	if not material is BaseMaterial3D or (material as BaseMaterial3D).albedo_texture == null:
 		return null
+	var key := "%d %d" % [(material as BaseMaterial3D).albedo_texture.get_instance_id(), side]
+	if _pictures_drawn.has(key):
+		var drawn: Texture2D = _pictures_drawn[key]
+		if drawn == null:
+			return null
+		var reused: BaseMaterial3D = (material as BaseMaterial3D).duplicate()
+		reused.albedo_texture = drawn
+		return reused
 	var picture: Image = (material as BaseMaterial3D).albedo_texture.get_image()
 	if picture == null:
 		return null
@@ -1289,30 +1885,42 @@ static func _with_picture_drawn(material: Material) -> BaseMaterial3D:
 	if packed:
 		picture.decompress()
 	var widest := maxi(picture.get_width(), picture.get_height())
-	if widest <= PICTURE_SIDE_DRAWN and not packed:
+	if widest <= side and not packed:
+		_pictures_drawn[key] = null
 		return null
-	if widest > PICTURE_SIDE_DRAWN:
-		var shrink := float(PICTURE_SIDE_DRAWN) / widest
+	if widest > side:
+		var shrink := float(side) / widest
 		picture.resize(maxi(roundi(picture.get_width() * shrink), 1), maxi(roundi(picture.get_height() * shrink), 1), Image.INTERPOLATE_LANCZOS)
 	var copy: BaseMaterial3D = (material as BaseMaterial3D).duplicate()
 	copy.albedo_texture = ImageTexture.create_from_image(picture)
+	_pictures_drawn[key] = copy.albedo_texture
 	return copy
 
 
 ## A .glb the game takes, made by Godot from `node` and what's under it as they're drawn now, with its
 ## pictures as PNG, and `node` itself at the middle: the piece holds where it stands. With `alone`, only
-## `node`'s own mesh, as the meshes under it are pieces of their own. Empty if Godot can't make one.
-static func built_glb(node: Node3D, alone: bool) -> PackedByteArray:
+## `node`'s own mesh, as the meshes under it are pieces of their own. Pictures are made no more than `side`
+## pixels across, and `changes["shrunk"]` counts it if any was. With `middle`, that point under `node` is the
+## model's middle instead. Empty if Godot can't make one.
+static func built_glb(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, changes := {}, middle := Vector3.ZERO) -> PackedByteArray:
 	var copy := node.duplicate() as Node3D
 	if copy == null:
 		return PackedByteArray()
-	copy.transform = Transform3D.IDENTITY
+	copy.transform = Transform3D(Basis.IDENTITY, -middle)
 	if alone:
 		for child in copy.get_children():
 			copy.remove_child(child)
 			child.free()
+	# Scattered meshes in it are made into copies of their own, by _read_scatters.
+	for scatter in copy.find_children("*", "MultiMeshInstance3D", true, false):
+		scatter.get_parent().remove_child(scatter)
+		scatter.free()
+	var shrunk := false
 	for part in meshes_in(copy):
-		_undress(part)
+		shrunk = _undress(part, side) or shrunk
+		_join_same_materials(part)
+	if shrunk and changes.has("shrunk"):
+		changes["shrunk"] += 1
 	var document := GLTFDocument.new()
 	document.image_format = "PNG"
 	var state := GLTFState.new()
@@ -1323,27 +1931,246 @@ static func built_glb(node: Node3D, alone: bool) -> PackedByteArray:
 	return bytes
 
 
-static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "") -> void:
+## Whether `node`, a mesh on its own, reaches further from its middle than the game takes in a model, as
+## a mesh imported from a whole level, holding everything of one material across it, does.
+static func _too_wide(node: MeshInstance3D) -> bool:
+	var box: AABB = node.global_transform * node.mesh.get_aabb()
+	return box.size.x > MOST_MODEL_REACH * 2.0 or box.size.z > MOST_MODEL_REACH * 2.0 or box.size.y > MOST_MODEL_REACH * 2.0
+
+
+## Cuts `node`, a mesh on its own too wide for one model, into parts by where its triangles lie, each a model
+## of the map's own standing at its own middle: as few as cover the map with parts no wider than the game
+## takes in a model. Triangles outside the reach of the map are left out. Gives back how many parts.
+static func _cut_wide_mesh(node: MeshInstance3D, scene: Scene) -> int:
+	var root := _root_of(node)
+	var reach: float = root.half_width + SCENERY_BEYOND
+	var cells := maxi(ceili(reach * 2.0 / WIDEST_CUT), 1)
+	var cell := reach * 2.0 / cells
+	var place := node.global_transform
+	var turn := place.basis.orthonormalized()
+	var mesh := node.mesh
+	# Each part's triangles, by its cell, as {surface number: PackedInt32Array of corners}.
+	var parts := {}
+	var left_out := 0
+	var lists := []
+	for surface in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surface)
+		lists.append(arrays)
+		var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var corners: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(points.size()))
+		for first in range(0, corners.size() - 2, 3):
+			var middle := place * ((points[corners[first]] + points[corners[first + 1]] + points[corners[first + 2]]) / 3.0)
+			if absf(middle.x) > reach or absf(middle.z) > reach or middle.y < -BELOW_THE_FLOOR or middle.y > root.ceiling + SCENERY_BEYOND:
+				left_out += 1
+				continue
+			var key := Vector2i(clampi(floori((middle.x + reach) / cell), 0, cells - 1), clampi(floori((middle.z + reach) / cell), 0, cells - 1))
+			if not parts.has(key):
+				parts[key] = {}
+			if not parts[key].has(surface):
+				parts[key][surface] = PackedInt32Array()
+			parts[key][surface].append_array([corners[first], corners[first + 1], corners[first + 2]])
+	var made := 0
+	var base := model_name(String(node.name)).get_basename()
+	var keys: Array = parts.keys()
+	keys.sort()
+	for key: Vector2i in keys:
+		var cut := ArrayMesh.new()
+		var low := Vector3.INF
+		var high := -Vector3.INF
+		for surface: int in parts[key]:
+			for corner in parts[key][surface]:
+				var at: Vector3 = place * lists[surface][Mesh.ARRAY_VERTEX][corner]
+				low = low.min(at)
+				high = high.max(at)
+		var middle := (low + high) / 2.0
+		for surface: int in parts[key]:
+			cut.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _cut_arrays(lists[surface], parts[key][surface], place, turn, middle))
+			cut.surface_set_material(cut.get_surface_count() - 1, node.get_active_material(surface))
+		var holder := MeshInstance3D.new()
+		holder.mesh = cut
+		var bytes := built_glb(holder, true, scene.picture_side, scene.changes)
+		holder.free()
+		if bytes.is_empty():
+			scene.problem_on(node, "%s can't be made into models for the game. Export it from Blender as glTF Binary (.glb) in smaller parts instead." % node.name)
+			return made
+		var name := _free_model_name("%s_%d_%d.glb" % [base, key.x, key.y], scene)
+		scene.built[name] = bytes
+		if not _take_model(node, String(node.name), name, "cut %d %s" % [node.get_instance_id(), key], bytes, scene):
+			continue
+		scene.pieces.append({"model": name, "at": middle, "up": Vector3.UP, "turn": 0.0, "scale": 1.0})
+		scene.sources["Piece"].append("Part %d of %s" % [made + 1, node.name])
+		made += 1
+	if left_out > 0:
+		scene.warning_among(node, "cut away", "%d triangles of %s lie too far outside the map, so they're left out." % [left_out, node.name], "Parts of %d meshes lie too far outside the map, so they're left out. Make the map wider to keep them.", "%s: %d triangles" % [node.name, left_out])
+	return made
+
+
+## The arrays of a part of a mesh: only `corners` of `arrays`, numbered afresh, placed by `place` and then
+## about `middle`, with their normals turned by `turn`.
+static func _cut_arrays(arrays: Array, corners: PackedInt32Array, place: Transform3D, turn: Basis, middle: Vector3) -> Array:
+	var renumbered := {}
+	var order := PackedInt32Array()
+	var indices := PackedInt32Array()
+	for corner in corners:
+		if not renumbered.has(corner):
+			renumbered[corner] = order.size()
+			order.append(corner)
+		indices.append(renumbered[corner])
+	var out := []
+	out.resize(Mesh.ARRAY_MAX)
+	var points := PackedVector3Array()
+	for corner in order:
+		points.append(place * arrays[Mesh.ARRAY_VERTEX][corner] - middle)
+	out[Mesh.ARRAY_VERTEX] = points
+	if arrays[Mesh.ARRAY_NORMAL] != null:
+		var normals := PackedVector3Array()
+		for corner in order:
+			normals.append((turn * arrays[Mesh.ARRAY_NORMAL][corner]).normalized())
+		out[Mesh.ARRAY_NORMAL] = normals
+	for kind in [Mesh.ARRAY_TEX_UV, Mesh.ARRAY_TEX_UV2]:
+		if arrays[kind] != null:
+			var uvs := PackedVector2Array()
+			for corner in order:
+				uvs.append(arrays[kind][corner])
+			out[kind] = uvs
+	if arrays[Mesh.ARRAY_COLOR] != null:
+		var colours := PackedColorArray()
+		for corner in order:
+			colours.append(arrays[Mesh.ARRAY_COLOR][corner])
+		out[Mesh.ARRAY_COLOR] = colours
+	out[Mesh.ARRAY_INDEX] = indices
+	return out
+
+
+## The .glbs the game takes made of `node`, as built_glb makes one, as {"glbs", "middle"}: one, or for a model
+## with more materials than the game takes in one, several, each of at most MOST_MODEL_MATERIALS of them,
+## which together draw the whole model. A model whose meshes lie far from its node, as one imported with
+## its place built into its mesh has, is made about its own middle, and "middle" says where that was under
+## the node; it's nothing otherwise. "glbs" is empty if Godot can't make them.
+static func split_glbs(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, changes := {}) -> Dictionary:
+	var made: Array[PackedByteArray] = []
+	var result := {"glbs": made, "middle": Vector3.ZERO}
+	var copy := node.duplicate() as Node3D
+	if copy == null:
+		return result
+	copy.transform = Transform3D.IDENTITY
+	if alone:
+		for child in copy.get_children():
+			copy.remove_child(child)
+			child.free()
+	var middle := _far_middle(copy)
+	result["middle"] = middle
+	# Each group of surfaces sharing at most MOST_MODEL_MATERIALS materials, as {"materials", "surfaces"},
+	# each surface as [part, surface number].
+	var groups: Array[Dictionary] = []
+	for part in meshes_in(copy):
+		for surface in part.mesh.get_surface_count():
+			var material := part.get_active_material(surface)
+			var id := material.get_instance_id() if material != null else 0
+			var into: Dictionary = {}
+			for group in groups:
+				if group["materials"].has(id):
+					into = group
+					break
+			if into.is_empty():
+				for group in groups:
+					if group["materials"].size() < MOST_MODEL_MATERIALS:
+						into = group
+						break
+			if into.is_empty():
+				into = {"materials": {}, "surfaces": []}
+				groups.append(into)
+			into["materials"][id] = true
+			into["surfaces"].append([part, surface])
+	if groups.size() <= 1:
+		copy.free()
+		var whole := built_glb(node, alone, side, changes, middle)
+		if not whole.is_empty():
+			made.append(whole)
+		return result
+	for group in groups:
+		var holder := Node3D.new()
+		var by_part := {}
+		for entry: Array in group["surfaces"]:
+			var part: MeshInstance3D = entry[0]
+			if not by_part.has(part):
+				var piece := MeshInstance3D.new()
+				piece.mesh = ArrayMesh.new()
+				piece.transform = _place_under(part, copy).translated(-middle)
+				holder.add_child(piece)
+				by_part[part] = piece
+			var mesh: ArrayMesh = by_part[part].mesh
+			mesh.add_surface_from_arrays(part.mesh.surface_get_primitive_type(entry[1]), part.mesh.surface_get_arrays(entry[1]))
+			mesh.surface_set_material(mesh.get_surface_count() - 1, part.get_active_material(entry[1]))
+		var bytes := built_glb(holder, false, side, changes)
+		holder.free()
+		if bytes.is_empty():
+			copy.free()
+			made.clear()
+			return result
+		made.append(bytes)
+	copy.free()
+	return result
+
+
+## The middle of the box the meshes under `top` fill, if any of them reach further than the game takes from
+## `top`'s own middle; nothing otherwise.
+static func _far_middle(top: Node3D) -> Vector3:
+	var box := AABB()
+	var any := false
+	for part in meshes_in(top):
+		var placed := _place_under(part, top) * part.mesh.get_aabb()
+		box = placed if not any else box.merge(placed)
+		any = true
+	if not any:
+		return Vector3.ZERO
+	var reach := 0.0
+	for corner in 8:
+		reach = maxf(reach, box.get_endpoint(corner).length())
+	return box.get_center() if reach > MOST_MODEL_REACH else Vector3.ZERO
+
+
+## Where `part` is under `top`, which it hangs below, whether or not either is in the scene tree.
+static func _place_under(part: Node3D, top: Node3D) -> Transform3D:
+	if part == top:
+		return Transform3D.IDENTITY
+	var place := part.transform
+	var above := part.get_parent()
+	while above != null and above != top:
+		if above is Node3D:
+			place = (above as Node3D).transform * place
+		above = above.get_parent()
+	return place
+
+
+## Reads `node` as a piece of the kit `kit`, or of the map's own model `model`. Only a `named` one goes in
+## under the node's name for the map's script: a model split in parts is named on its first.
+static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "", named := true) -> void:
 	if model.is_empty() and not Kit.has(kit):
 		scene.problem_on(node, "%s uses %s, which the kit no longer has. Delete it." % [node.name, kit])
 		return
 	var place := node.global_transform
+	# A model made about its own middle stands where that middle was.
+	place.origin = place * scene.model_middles.get(model, Vector3.ZERO)
 	var root := _root_of(node)
 	var reach: float = root.half_width + SCENERY_BEYOND
 	var at := place.origin
+	if not model.is_empty() and (absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND):
+		scene.warning_among(node, "far model", "%s stands at (%.0f, %.0f, %.0f), too far outside the map, so it's left out. Pieces may stand up to %s m past the map's edge and ceiling: make the map wider to keep it." % [node.name, at.x, at.y, at.z, SCENERY_BEYOND], "%%d of the map's own models stand too far outside the map, so they're left out. Pieces may stand up to %s m past its edge and ceiling: make the map wider to keep them." % SCENERY_BEYOND)
+		return
 	if absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND:
-		scene.problem_on(node, "%s is at (%.1f, %.1f, %.1f), too far outside the map. Pieces may stand up to %s m past its edge and ceiling." % [node.name, at.x, at.y, at.z, SCENERY_BEYOND])
+		scene.problem_among(node, "far", "%s is at (%.1f, %.1f, %.1f), too far outside the map. Pieces may stand up to %s m past its edge and ceiling." % [node.name, at.x, at.y, at.z, SCENERY_BEYOND], "%%d pieces are too far outside the map. Pieces may stand up to %s m past its edge and ceiling." % SCENERY_BEYOND)
 		return
 	var scale := place.basis.get_scale()
 	var unequal := maxf(absf(scale.x - scale.y), absf(scale.y - scale.z))
 	if unequal > STRETCH_SLACK * scale.x:
-		scene.problem_on(node, "%s is stretched (%s). Scale all three sides the same." % [node.name, scale])
+		scene.problem_among(node, "stretched", "%s is stretched (%s). Scale all three sides the same." % [node.name, scale], "%d pieces are stretched. Scale all three sides of each the same.")
 		return
 	if place.basis.determinant() < 0.0:
-		scene.problem_on(node, "%s is mirrored. The game can't draw a piece inside out: scale it by a positive number." % node.name)
+		scene.problem_among(node, "mirrored", "%s is mirrored. The game can't draw a piece inside out: scale it by a positive number." % node.name, "%d pieces are mirrored. The game can't draw a piece inside out: scale each by a positive number.")
 		return
 	if scale.x < SCALES.x or scale.x > SCALES.y:
-		scene.problem_on(node, "%s is scaled by %s. It must be from %s to %s." % [node.name, scale.x, SCALES.x, SCALES.y])
+		scene.problem_among(node, "scaled", "%s is scaled by %s. It must be from %s to %s." % [node.name, scale.x, SCALES.x, SCALES.y], "%%d pieces are scaled outside %s to %s." % [SCALES.x, SCALES.y])
 		return
 	var rotation := place.basis.get_rotation_quaternion()
 	var up := (rotation * Vector3.UP).normalized()
@@ -1353,7 +2180,7 @@ static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "") ->
 	if not model.is_empty():
 		piece = {"model": model, "at": place.origin, "up": up, "turn": turn, "scale": scale.x}
 	var is_switch := node.is_in_group(SWITCH_GROUP)
-	if is_switch or node.is_in_group(SCRIPT_GROUP):
+	if named and (is_switch or node.is_in_group(SCRIPT_GROUP)):
 		piece["name"] = String(node.name)
 		piece["switch"] = is_switch
 		piece["node"] = node
@@ -1392,6 +2219,212 @@ static func _check_piece_names(scene: Scene) -> void:
 		seen[piece["name"]] = true
 	if seen.size() > MOST_NAMED_PIECES:
 		scene.problems.append("The map names %d pieces for its script, and the most it can name is %d." % [seen.size(), MOST_NAMED_PIECES])
+
+
+## Whether `node` is a scattered mesh Export makes into copies: a MultiMeshInstance3D of a mesh, placed in 3D.
+static func _is_scatter(node: Node) -> bool:
+	if not node is MultiMeshInstance3D:
+		return false
+	var many: MultiMesh = (node as MultiMeshInstance3D).multimesh
+	return many != null and many.mesh != null and many.transform_format == MultiMesh.TRANSFORM_3D
+
+
+## Every scattered mesh under `root` Export makes into copies, wherever left_out would look for one.
+static func scatters(root: Node) -> Array[MultiMeshInstance3D]:
+	var found: Array[MultiMeshInstance3D] = []
+	_collect_scatters(root, found)
+	return found
+
+
+static func _collect_scatters(node: Node, found: Array[MultiMeshInstance3D]) -> void:
+	for child in node.get_children():
+		if child is Node3D and not child.visible:
+			continue
+		var path: String = child.scene_file_path
+		if path.begins_with(KIT_FOLDER) or path.get_extension().to_lower() == "glb":
+			continue
+		if not path.is_empty() and not _holds_kit_pieces(child) and meshes_in(child).is_empty():
+			continue
+		if _is_scatter(child):
+			found.append(child)
+		_collect_scatters(child, found)
+
+
+## Makes each copy of each scattered mesh (MultiMeshInstance3D) a piece of a model of that mesh, as if each
+## had been placed by hand. Copies that are stretched one way more than another, or tinted by their
+## material, get a model of their own for each stretch and shade, so the game draws them as Godot does.
+static func _read_scatters(root: SmartFellasMap, scene: Scene) -> void:
+	for scatter in scatters(root):
+		var many := scatter.multimesh
+		var count := many.instance_count if many.visible_instance_count < 0 else mini(many.visible_instance_count, many.instance_count)
+		if count == 0:
+			continue
+		var buffer := many.buffer
+		if buffer.size() < count * _copy_stride(many):
+			scene.problem_on(scatter, "%s's copies can't be read. Clear it and scatter it again." % scatter.name)
+			continue
+		var places: Array[Transform3D] = []
+		var sizes := PackedFloat32Array()
+		for index in count:
+			var place: Transform3D = scatter.global_transform * copy_place(many, buffer, index)
+			places.append(place)
+			sizes.append(absf(place.basis.get_scale().x))
+		var shades := _shades_of(scatter, count)
+		# Copies too small or too big for a piece share a model made to their middle size.
+		var base := 1.0
+		var smallest := Array(sizes).min() as float
+		var biggest := Array(sizes).max() as float
+		if smallest < SCALES.x or biggest > SCALES.y:
+			var logs := 0.0
+			for size in sizes:
+				logs += log(maxf(size, 0.000001))
+			base = exp(logs / count)
+		var outside := 0
+		var off_scale := 0
+		var taken := 0
+		for index in count:
+			var place := places[index]
+			var signed := place.basis.get_scale()
+			var size := maxf(absf(signed.x), maxf(absf(signed.y), absf(signed.z)))
+			if minf(absf(signed.x), minf(absf(signed.y), absf(signed.z))) < FLAT_AS_NOTHING:
+				off_scale += 1
+				continue
+			var stretch := (signed / size).snapped(Vector3.ONE * STRETCH_STEP)
+			if stretch.is_equal_approx(Vector3.ONE):
+				stretch = Vector3.ONE
+			var override := scatter.material_override.get_instance_id() if scatter.material_override != null else 0
+			var key := "%d %d %s %s" % [many.mesh.get_instance_id(), override, stretch * base, shades[index]]
+			if not scene.scatter_models.has(key):
+				scene.scatter_models[key] = _scatter_model(scatter, stretch * base, shades[index], scene)
+			var name: String = scene.scatter_models[key]
+			if name.is_empty():
+				continue
+			var turn := Basis(place.basis.x / signed.x, place.basis.y / signed.y, place.basis.z / signed.z).orthonormalized()
+			var piece := _scatter_piece(Transform3D(turn, place.origin), size / base, name, root)
+			if piece.is_empty():
+				outside += 1
+				continue
+			if piece.has("off_scale"):
+				off_scale += 1
+				continue
+			scene.pieces.append(piece)
+			scene.sources["Piece"].append("Copy %d of %s" % [index + 1, scatter.name])
+			taken += 1
+		if outside > 0:
+			scene.warning_among(scatter, "far copies", "%d copies in %s stand too far outside the map, so they're left out. Pieces may stand up to %s m past its edge and ceiling: make the map wider to keep them." % [outside, scatter.name, SCENERY_BEYOND], "Copies in %%d scattered meshes stand too far outside the map, so they're left out. Pieces may stand up to %s m past its edge and ceiling: make the map wider to keep them." % SCENERY_BEYOND, "%s: %d copies" % [scatter.name, outside])
+		if off_scale > 0:
+			scene.problem_on(scatter, "%d copies in %s are sized too far apart for the game: it takes a scattered mesh's copies up to %d times bigger or smaller than the middle one. Even their sizes out." % [off_scale, scatter.name, roundi(SCALES.y)])
+		if taken > 0:
+			scene.changes["scatters"] += 1
+			scene.changes["copies"] += taken
+
+
+## How many numbers each copy of a scattered mesh takes in its buffer: its place, then its colour and its
+## custom data if it has them.
+static func _copy_stride(many: MultiMesh) -> int:
+	return 12 + (4 if many.use_colors else 0) + (4 if many.use_custom_data else 0)
+
+
+## Where copy `index` of `many` is, under its scatter, read from its buffer, which holds each copy's place
+## row by row. The buffer is what Godot saves, and holds the copies even with no graphics card to draw them.
+static func copy_place(many: MultiMesh, buffer: PackedFloat32Array, index: int) -> Transform3D:
+	var at := index * _copy_stride(many)
+	var columns := Basis(
+		Vector3(buffer[at], buffer[at + 4], buffer[at + 8]),
+		Vector3(buffer[at + 1], buffer[at + 5], buffer[at + 9]),
+		Vector3(buffer[at + 2], buffer[at + 6], buffer[at + 10]),
+	)
+	return Transform3D(columns, Vector3(buffer[at + 3], buffer[at + 7], buffer[at + 11]))
+
+
+## A piece of `model` at `place`, which holds no scale, scaled by `size`: {} if it's too far outside the map,
+## or {"off_scale": true} if `size` is more than a piece can be scaled.
+static func _scatter_piece(place: Transform3D, size: float, model: String, root: SmartFellasMap) -> Dictionary:
+	var reach: float = root.half_width + SCENERY_BEYOND
+	var at := place.origin
+	if not at.is_finite() or absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND:
+		return {}
+	if size < SCALES.x or size > SCALES.y:
+		return {"off_scale": true}
+	var rotation := place.basis.get_rotation_quaternion()
+	var up := (rotation * Vector3.UP).normalized()
+	var twist := Kit.arc_from_up(up).inverse() * rotation
+	var turn := wrapf(2.0 * atan2(twist.y, twist.w), -PI, PI)
+	return {"model": model, "at": at, "up": up, "turn": turn, "scale": size}
+
+
+## The shade each copy of `scatter` is tinted, as words, or "" for each if its material doesn't show the
+## copies' colours: Godot only tints a copy by its colour if the material uses vertex colour as albedo. At
+## most MOST_SHADES shades are kept, the commonest, and every other copy wears the nearest of them.
+static func _shades_of(scatter: MultiMeshInstance3D, count: int) -> PackedStringArray:
+	var shades := PackedStringArray()
+	shades.resize(count)
+	var many := scatter.multimesh
+	if not many.use_colors or not _shows_copy_colours(scatter):
+		return shades
+	var colours: Array[Color] = []
+	var counts := {}
+	var buffer := many.buffer
+	for index in count:
+		var at := index * _copy_stride(many) + 12
+		var colour := Color(buffer[at], buffer[at + 1], buffer[at + 2])
+		colour = Color(snappedf(colour.r, SHADE_STEP), snappedf(colour.g, SHADE_STEP), snappedf(colour.b, SHADE_STEP), 1.0)
+		colours.append(colour)
+		counts[colour] = counts.get(colour, 0) + 1
+	var kept: Array = counts.keys()
+	kept.sort_custom(func(one: Color, other: Color) -> bool: return counts[one] > counts[other] or (counts[one] == counts[other] and one.to_rgba32() < other.to_rgba32()))
+	kept = kept.slice(0, MOST_SHADES)
+	for index in count:
+		var nearest: Color = kept[0]
+		for shade: Color in kept:
+			if _colour_gap(shade, colours[index]) < _colour_gap(nearest, colours[index]):
+				nearest = shade
+		shades[index] = nearest.to_html(false)
+	return shades
+
+
+static func _colour_gap(one: Color, other: Color) -> float:
+	return Vector3(one.r - other.r, one.g - other.g, one.b - other.b).length_squared()
+
+
+## Whether a scattered mesh's material shows each copy's colour.
+static func _shows_copy_colours(scatter: MultiMeshInstance3D) -> bool:
+	var mesh := scatter.multimesh.mesh
+	for surface in mesh.get_surface_count():
+		var material: Material = scatter.material_override if scatter.material_override != null else mesh.surface_get_material(surface)
+		if material is BaseMaterial3D and (material as BaseMaterial3D).vertex_color_use_as_albedo:
+			return true
+	return false
+
+
+## The map's own model of `scatter`'s mesh, stretched by `stretch` and tinted `shade` (as HTML, or "" for
+## none), made, checked and named: its name, or "" if it can't be, which is said on `scatter`.
+static func _scatter_model(scatter: MultiMeshInstance3D, stretch: Vector3, shade: String, scene: Scene) -> String:
+	var holder := Node3D.new()
+	var part := MeshInstance3D.new()
+	part.mesh = scatter.multimesh.mesh
+	part.scale = stretch
+	holder.add_child(part)
+	var mesh := part.mesh
+	for surface in mesh.get_surface_count():
+		var material: Material = scatter.material_override if scatter.material_override != null else mesh.surface_get_material(surface)
+		if not shade.is_empty() and material is BaseMaterial3D:
+			var tinted: BaseMaterial3D = material.duplicate()
+			tinted.albedo_color *= Color.html(shade)
+			tinted.vertex_color_use_as_albedo = false
+			material = tinted
+		if material != null:
+			part.set_surface_override_material(surface, material)
+	var bytes := built_glb(holder, false, scene.picture_side, scene.changes)
+	holder.free()
+	if bytes.is_empty():
+		scene.problem_on(scatter, "%s's mesh can't be made into a model for the game. Export it from Blender as glTF Binary (.glb) instead." % scatter.name)
+		return ""
+	var name := _free_model_name(model_name(String(scatter.name)), scene)
+	scene.built[name] = bytes
+	if not _take_model(scatter, String(scatter.name), name, "scattered %d %s %s" % [scatter.get_instance_id(), stretch, shade], bytes, scene):
+		return ""
+	return name
 
 
 ## Painted pieces already hold what map.ron wants, so they go in as they are, each kind together.
