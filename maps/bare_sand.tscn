@@ -1,0 +1,40 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/smart_fellas_maps/map_root.gd" id="1_root"]
+
+[sub_resource type="StandardMaterial3D" id="sand"]
+albedo_color = Color(0.76, 0.69, 0.52, 1)
+
+[sub_resource type="PlaneMesh" id="floor"]
+material = SubResource("sand")
+size = Vector2(240, 240)
+
+[node name="BareSand" type="Node3D"]
+script = ExtResource("1_root")
+map_name = "Bare Sand"
+half_width = 30.0
+ceiling = 13.5
+
+[node name="Seabed" type="MeshInstance3D" parent="."]
+mesh = SubResource("floor")
+
+[node name="spawn_octopus_1" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 1, -24)
+
+[node name="spawn_octopus_2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 1, -24)
+
+[node name="spawn_diver_1" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -10, 1.5, 24)
+
+[node name="spawn_diver_2" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 10, 1.5, 24)
+
+[node name="food_patch_1" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0, 0)
+
+[node name="food_patch_2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0, 0)
+
+[node name="food_patch_3" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 8)

@@ -1,0 +1,3 @@
+# The release zip is this repository without its GitHub files.
+.github export-ignore
+.gitattributes export-ignore

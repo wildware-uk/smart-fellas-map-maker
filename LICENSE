@@ -1,0 +1,61 @@
+Smart Fellas map maker - licences
+
+This project has two parts under two licences.
+
+1. The code: MIT licence
+   Every script and shader: the .gd, .gdshader and .gdshaderinc files, plugin.cfg, project.godot,
+   the recipes (.json) and maps/bare_sand.tscn.
+
+2. The kit: Smart Fellas map kit licence
+   The pieces, textures and pictures:
+     addons/smart_fellas_maps/models/
+     addons/smart_fellas_maps/textures/
+     addons/smart_fellas_maps/thumbs/
+     addons/smart_fellas_maps/water/pictures/
+   and Godot's .import files beside them.
+
+addons/smart_fellas_maps/water/tony_mc_mapface.bin is by someone else, under its own MIT licence, and
+some shaders follow sums from the Bevy engine, under its MIT licence. See CREDITS.txt.
+
+
+-------------------------------------------------------------------------------
+1. MIT licence (the code)
+-------------------------------------------------------------------------------
+
+Copyright (c) 2026 Wildware Studios
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+-------------------------------------------------------------------------------
+2. Smart Fellas map kit licence (the pieces, textures and pictures)
+-------------------------------------------------------------------------------
+
+Copyright (c) 2026 Wildware Studios. All rights reserved, except as below.
+
+You may use, copy and change the kit to make maps for the game Smart Fellas, and share those
+maps, for free or not, including on the Steam Workshop. A map may carry the kit's pieces inside it.
+
+You may not:
+  - sell the kit, or any part of it, on its own or in a pack of assets;
+  - use the kit, or any part of it, in any other game, program, film or product;
+  - say that you made the kit.
+
+The kit is provided "as is", without warranty of any kind. In no event shall Wildware Studios be
+liable for any claim, damages or other liability arising from its use.

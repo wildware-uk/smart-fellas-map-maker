@@ -1,0 +1,30 @@
+{
+	"name": "Sand garden",
+	"mix": [
+		{ "kit": "foliage_grass_0", "weight": 5.0 },
+		{ "kit": "foliage_grass_1", "weight": 5.0 },
+		{ "kit": "foliage_grass_2", "weight": 5.0 },
+		{ "kit": "foliage_grass_meadow_0", "weight": 1.0 },
+		{ "kit": "foliage_grass_meadow_2", "weight": 1.0 },
+		{ "kit": "foliage_algae_0", "weight": 1.0 },
+		{ "kit": "prop_pebble_0", "weight": 1.0 },
+		{ "kit": "prop_conch_0", "weight": 0.3 },
+		{ "kit": "prop_clam_0", "weight": 0.3 }
+	],
+	"wide": 4.0,
+	"thick": 8.0,
+	"turn": 180.0,
+	"size_low": 0.9,
+	"size_high": 1.8,
+	"wobble": 6.0,
+	"follow": 0.5,
+	"on_sand": true,
+	"on_rock": false,
+	"slope_low": 0.0,
+	"slope_high": 35.0,
+	"height_low": 0.0,
+	"height_high": 100.0,
+	"clumps": 0.95,
+	"clump_size": 4.5,
+	"seed": 1
+}

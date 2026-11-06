@@ -1,0 +1,28 @@
+{
+	"name": "Rock rubble",
+	"mix": [
+		{ "kit": "rock_boulder_0", "weight": 2.0 },
+		{ "kit": "rock_boulder_1", "weight": 2.0 },
+		{ "kit": "rock_mossy_boulder_0", "weight": 2.0 },
+		{ "kit": "rock_leg_0", "weight": 3.0 },
+		{ "kit": "rock_shelf_0", "weight": 1.0 },
+		{ "kit": "prop_pebble_0", "weight": 3.0 },
+		{ "kit": "prop_pebble_1", "weight": 3.0 }
+	],
+	"wide": 4.0,
+	"thick": 0.6,
+	"turn": 180.0,
+	"size_low": 0.5,
+	"size_high": 1.8,
+	"wobble": 12.0,
+	"follow": 0.6,
+	"on_sand": true,
+	"on_rock": false,
+	"slope_low": 0.0,
+	"slope_high": 40.0,
+	"height_low": 0.0,
+	"height_high": 100.0,
+	"clumps": 0.75,
+	"clump_size": 5.0,
+	"seed": 1
+}

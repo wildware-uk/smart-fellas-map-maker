@@ -1,0 +1,26 @@
+{
+	"name": "Kelp bed",
+	"mix": [
+		{ "kit": "foliage_kelp_0", "weight": 3.0 },
+		{ "kit": "foliage_kelp_1", "weight": 3.0 },
+		{ "kit": "foliage_kelp_2", "weight": 3.0 },
+		{ "kit": "foliage_grass_0", "weight": 2.0 },
+		{ "kit": "foliage_grass_1", "weight": 2.0 }
+	],
+	"wide": 4.0,
+	"thick": 1.2,
+	"turn": 180.0,
+	"size_low": 0.7,
+	"size_high": 1.25,
+	"wobble": 4.0,
+	"follow": 0.0,
+	"on_sand": true,
+	"on_rock": true,
+	"slope_low": 0.0,
+	"slope_high": 30.0,
+	"height_low": 0.0,
+	"height_high": 100.0,
+	"clumps": 0.8,
+	"clump_size": 4.0,
+	"seed": 1
+}

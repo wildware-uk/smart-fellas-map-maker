@@ -1,0 +1,74 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Smart Fellas Maps"
+run/main_scene="res://maps/bare_sand.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/smart_fellas_maps/plugin.cfg")
+
+[rendering]
+
+lights_and_shadows/directional_shadow/size=2048
+
+[shader_globals]
+
+sf_time={
+"type": "float",
+"value": 0.0
+}
+sf_haze={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+sf_haze_density={
+"type": "float",
+"value": 0.0
+}
+sf_sun_direct={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+sf_sun_to={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}
+sf_sun_right={
+"type": "vec3",
+"value": Vector3(1, 0, 0)
+}
+sf_sun_up={
+"type": "vec3",
+"value": Vector3(0, 0, 1)
+}
+sf_fill={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+sf_caustics={
+"type": "float",
+"value": 0.0
+}
+sf_shaft_light={
+"type": "float",
+"value": 0.0
+}
+sf_shaft_colour={
+"type": "vec3",
+"value": Vector3(1, 1, 1)
+}
+sf_surface={
+"type": "vec3",
+"value": Vector3(1, 1, 1)
+}

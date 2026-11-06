@@ -1,0 +1,30 @@
+{
+	"name": "Coral on rock",
+	"mix": [
+		{ "kit": "prop_bush_orange_0", "weight": 2.0 },
+		{ "kit": "prop_bush_pink_0", "weight": 2.0 },
+		{ "kit": "prop_bush_purple_1", "weight": 2.0 },
+		{ "kit": "prop_branch_pink_0", "weight": 2.0 },
+		{ "kit": "prop_brain_0", "weight": 2.0 },
+		{ "kit": "prop_tubes_0", "weight": 1.5 },
+		{ "kit": "prop_tubes_blue_0", "weight": 1.0 },
+		{ "kit": "table_coral_0", "weight": 1.0 },
+		{ "kit": "foliage_algae_1", "weight": 1.5 }
+	],
+	"wide": 3.0,
+	"thick": 2.5,
+	"turn": 180.0,
+	"size_low": 0.7,
+	"size_high": 1.5,
+	"wobble": 6.0,
+	"follow": 0.85,
+	"on_sand": false,
+	"on_rock": true,
+	"slope_low": 0.0,
+	"slope_high": 70.0,
+	"height_low": 0.0,
+	"height_high": 100.0,
+	"clumps": 0.65,
+	"clump_size": 2.5,
+	"seed": 1
+}

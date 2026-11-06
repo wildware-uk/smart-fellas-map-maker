@@ -1,0 +1,44 @@
+name: Something's wrong
+description: The map maker did something it shouldn't, or didn't do something it should.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The Map panel shows it at the bottom, under "This add-on".
+      placeholder: 2026.11.06-1a2b3c4
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Your computer
+      description: Windows or Linux, and the Godot version if it isn't 4.7.2.
+      placeholder: Windows 11, Godot 4.7.2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      description: The steps, one per line, so we can do the same.
+      placeholder: |
+        1. Opened maps/bare_sand.tscn
+        2. Pressed Populate
+        3. Pressed Test Map
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened instead?
+      description: Copy any red lines from Godot's Output panel at the bottom, and add a screenshot if it helps.
+    validations:
+      required: true
