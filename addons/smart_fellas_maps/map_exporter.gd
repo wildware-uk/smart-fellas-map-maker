@@ -1,6 +1,7 @@
 @tool
 extends RefCounted
-## Writes a scene as a map package: a folder holding map.ron, which the game's checker reads.
+## Writes a scene as a map package: one <map>.sfm file, a zip holding map.ron and the map's own models,
+## which the game's checker reads.
 ##
 ## Godot and the game agree on what the numbers mean: Y up, right-handed, one unit a metre. A piece's
 ## turn is about its own up, in the same order as Piece::rotation in the game.
@@ -20,6 +21,10 @@ const NO_SEABED_FORMAT := 5
 const MODELS_FORMAT := 4
 ## Where a map's own models go in its package.
 const ASSETS_FOLDER := "assets"
+## The end of a map package's file name: Smart Fellas Map.
+const SFM_EXTENSION := "sfm"
+## What a package held when it was a folder, before .sfm files: what Export takes out of an old one.
+const OLD_PACKAGE_FILES := ["map.ron", "preview.png"]
 ## The game's MAX_ASSET_BYTES and MAX_MAP_MODELS.
 const MOST_MODEL_BYTES := 67108864
 const MOST_MODELS := 32
@@ -205,8 +210,8 @@ static func _is_the_games_repository(folder: String) -> bool:
 	return cargo.contains('name = "inkognito"')
 
 
-## Writes the scene under `root` as `out_folder`/<map>/map.ron.
-## Gives back {"folder": where it went, "sources": what its lists came from, as in Scene}, or
+## Writes the scene under `root` as `out_folder`/<map>.sfm, in place of any it wrote there before.
+## Gives back {"package": the .sfm it wrote, "sources": what its lists came from, as in Scene}, or
 ## {"problems": what stops it, in plain words, "nodes": the node each is on, if it's on one}.
 ## "warnings" says what doesn't stop it but is worth knowing, as {"words", "node"}.
 static func export_map(root: Node, out_folder: String) -> Dictionary:
@@ -221,20 +226,150 @@ static func export_map(root: Node, out_folder: String) -> Dictionary:
 	var too_heavy := file_problem(text.to_utf8_buffer().size())
 	if not too_heavy.is_empty():
 		return {"problems": [too_heavy]}
-	var folder := out_folder.path_join(_folder_name(root.map_name))
+	var made := DirAccess.make_dir_recursive_absolute(out_folder)
+	if made != OK:
+		return {"problems": ["Can't make the folder %s: %s." % [out_folder, error_string(made)]]}
+	var name := _folder_name(root.map_name)
+	var folder := _building_folder(name)
+	var built := _build_folder(scene, text, folder)
+	var package := out_folder.path_join("%s.%s" % [name, SFM_EXTENSION])
+	if built.is_empty():
+		built = pack_folder(folder, package)
+	_remove_folder(folder)
+	if not built.is_empty():
+		return {"problems": [built]}
+	_remove_old_package(out_folder.path_join(name))
+	return {"package": package, "sources": scene.sources, "warnings": scene.warnings}
+
+
+## Where Export puts a package together before packing it: a folder of the add-on's own, never where the
+## game looks, so the game can't come across half a map.
+static func _building_folder(name: String) -> String:
+	return ProjectSettings.globalize_path("user://smart_fellas_export").path_join(name)
+
+
+## Writes the package's files into `folder`, emptied first. Gives back what went wrong, or nothing.
+static func _build_folder(scene: Scene, text: String, folder: String) -> String:
+	_remove_folder(folder)
 	var made := DirAccess.make_dir_recursive_absolute(folder)
 	if made != OK:
-		return {"problems": ["Can't make the folder %s: %s." % [folder, error_string(made)]]}
+		return "Can't make the folder %s: %s." % [folder, error_string(made)]
 	var copied := _copy_models(scene, folder)
 	if not copied.is_empty():
-		return {"problems": [copied]}
+		return copied
 	var file := FileAccess.open(folder.path_join("map.ron"), FileAccess.WRITE)
 	if file == null:
 		var why := error_string(FileAccess.get_open_error())
-		return {"problems": ["Can't write to %s: %s." % [folder, why]]}
+		return "Can't write to %s: %s." % [folder, why]
 	file.store_string(text)
 	file.close()
-	return {"folder": folder, "sources": scene.sources, "warnings": scene.warnings}
+	return ""
+
+
+## Packs every file in `folder` into the .sfm `to`, by its path inside the folder with forward slashes.
+## It is written beside `to` first and then takes its place, so the game never reads half of one. Gives
+## back what went wrong, or nothing.
+static func pack_folder(folder: String, to: String) -> String:
+	var partial := to + ".part"
+	var zip := ZIPPacker.new()
+	var opened := zip.open(partial)
+	if opened != OK:
+		return "Can't write %s: %s." % [to, error_string(opened)]
+	for inside in _files_inside(folder, ""):
+		var bytes := FileAccess.get_file_as_bytes(folder.path_join(inside))
+		var read := FileAccess.get_open_error()
+		var went := zip.start_file(inside)
+		if went == OK:
+			went = zip.write_file(bytes)
+		if went == OK:
+			went = zip.close_file()
+		if read != OK or went != OK:
+			zip.close()
+			DirAccess.remove_absolute(partial)
+			var why := error_string(read if read != OK else went)
+			return "Can't pack %s into %s: %s." % [inside, to.get_file(), why]
+	zip.close()
+	if FileAccess.file_exists(to):
+		DirAccess.remove_absolute(to)
+	var moved := DirAccess.rename_absolute(partial, to)
+	if moved != OK:
+		DirAccess.remove_absolute(partial)
+		return "Can't write %s: %s." % [to, error_string(moved)]
+	return ""
+
+
+## The bytes of the file `inside` the .sfm `package`, or nothing if it isn't there.
+static func packed_file(package: String, inside: String) -> PackedByteArray:
+	var zip := ZIPReader.new()
+	if zip.open(package) != OK:
+		return PackedByteArray()
+	var bytes := zip.read_file(inside) if zip.file_exists(inside) else PackedByteArray()
+	zip.close()
+	return bytes
+
+
+## The text of the file `inside` the .sfm `package`, or "" if it isn't there.
+static func packed_text(package: String, inside: String) -> String:
+	return packed_file(package, inside).get_string_from_utf8()
+
+
+## Every file under `folder`, by its path from there, in order.
+static func _files_inside(folder: String, under: String) -> Array[String]:
+	var found: Array[String] = []
+	var here := folder.path_join(under) if not under.is_empty() else folder
+	var files := Array(DirAccess.get_files_at(here))
+	files.sort()
+	for file: String in files:
+		found.append(under.path_join(file) if not under.is_empty() else file)
+	var folders := Array(DirAccess.get_directories_at(here))
+	folders.sort()
+	for inner: String in folders:
+		found.append_array(_files_inside(folder, under.path_join(inner) if not under.is_empty() else inner))
+	return found
+
+
+## Takes away a folder Export built, and everything in it.
+static func _remove_folder(folder: String) -> void:
+	if not DirAccess.dir_exists_absolute(folder):
+		return
+	for inside in _files_inside(folder, ""):
+		DirAccess.remove_absolute(folder.path_join(inside))
+	var folders := [folder]
+	var at := 0
+	while at < folders.size():
+		for inner in DirAccess.get_directories_at(folders[at]):
+			folders.append(folders[at].path_join(inner))
+		at += 1
+	folders.reverse()
+	for each: String in folders:
+		DirAccess.remove_absolute(each)
+
+
+## Takes out the folder an older Export wrote for this map before maps were one .sfm file, so the game
+## doesn't list the map twice. Only what Export put there goes: map.ron, preview.png and the models in
+## assets/. If anything else is in it, it's someone's own, and the folder stays.
+static func _remove_old_package(folder: String) -> void:
+	if not FileAccess.file_exists(folder.path_join("map.ron")):
+		return
+	var assets := folder.path_join(ASSETS_FOLDER)
+	for file in DirAccess.get_files_at(folder):
+		if not file in OLD_PACKAGE_FILES:
+			return
+	for inner in DirAccess.get_directories_at(folder):
+		if inner != ASSETS_FOLDER:
+			return
+	if DirAccess.dir_exists_absolute(assets):
+		if not DirAccess.get_directories_at(assets).is_empty():
+			return
+		for file in DirAccess.get_files_at(assets):
+			if not (file.ends_with(".glb") or file.ends_with(".png")):
+				return
+		for file in DirAccess.get_files_at(assets):
+			DirAccess.remove_absolute(assets.path_join(file))
+		DirAccess.remove_absolute(assets)
+	for file in DirAccess.get_files_at(folder):
+		DirAccess.remove_absolute(folder.path_join(file))
+	DirAccess.remove_absolute(folder)
 
 
 ## Puts each of the map's own models in the package's assets/, by the name map.ron calls it, with any
@@ -369,8 +504,8 @@ static func name_problem(map_name: String) -> String:
 
 ## What `export_map` gave back, for a person to read.
 static func result_words(result: Dictionary) -> String:
-	if result.has("folder"):
-		return "Exported to %s" % result["folder"]
+	if result.has("package"):
+		return "Exported to %s" % result["package"]
 	return "This map can't be exported yet:\n- %s" % "\n- ".join(result["problems"])
 
 

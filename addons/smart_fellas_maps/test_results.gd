@@ -13,7 +13,7 @@ const SIZE := Vector2i(720, 420)
 const WORDS_WIDTH := 560.0
 
 var _holder: VBoxContainer
-## Where the map went, for Open folder.
+## The .sfm the map went into, for Show in folder.
 var _folder := ""
 
 
@@ -40,7 +40,7 @@ func show_result(result: Dictionary) -> void:
 		add_button("Choose the game's maps folder", true, "maps")
 	elif result.get("into_game", false) and result.has("folder"):
 		_folder = result["folder"]
-		add_button("Open folder", true, "open")
+		add_button("Show in folder", true, "open")
 	custom_action.connect(_on_custom_action)
 
 
@@ -82,7 +82,7 @@ func _on_custom_action(action: StringName) -> void:
 		&"maps":
 			_pick_the_maps_folder()
 		&"open":
-			OS.shell_open(_folder)
+			OS.shell_show_in_file_manager(_folder)
 
 
 func _pick_the_maps_folder() -> void:

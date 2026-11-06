@@ -211,7 +211,7 @@ static func source_of(problem: String, sources: Dictionary) -> Variant:
 ## What the buttons do up to the game opening: exports the map under `root`, finds the game and checks
 ## the map with it. Gives back what came of it in plain words:
 ## - "state": EXPORT_REFUSED, NO_GAME, CANT_CHECK, PROBLEMS or FINE;
-## - "folder": where the map went, and "game": what was found, once they're known;
+## - "folder": the .sfm the map went into, and "game": what was found, once they're known;
 ## - "words": what to tell the map maker first;
 ## - "lines": each problem or warning, as {"words", "node"}, with the node it's on if it's on one.
 ## `into_game` says the folder is the game's own maps folder, which is said in words a map maker knows.
@@ -222,7 +222,7 @@ static func export_and_check(root: Node, out_folder: String, chosen_game: String
 		for words: String in exported["problems"]:
 			lines.append({"words": words, "node": exported.get("nodes", {}).get(words)})
 		return {"state": State.EXPORT_REFUSED, "words": "This map can't be exported yet:", "lines": lines}
-	var folder: String = exported["folder"]
+	var folder: String = exported["package"]
 	var went := "Exported to Smart Fellas: My maps\n(%s)" % folder if into_game else "Exported to %s" % folder
 	lines.append_array(exported["warnings"])
 	var game := GameFinder.starter_of(GameFinder.find(chosen_game))

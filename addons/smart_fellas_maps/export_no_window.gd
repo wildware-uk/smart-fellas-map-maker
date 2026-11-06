@@ -26,9 +26,9 @@ func _initialize() -> void:
 	var out_folder := words[1] if words.size() > 1 else MapExporter.default_out_folder()
 	var result := MapExporter.export_map(root, out_folder)
 	print(MapExporter.result_words(result))
-	if result.has("folder") and words.size() > 2:
+	if result.has("package") and words.size() > 2:
 		_write_view(root, words[2])
-	quit(0 if result.has("folder") else 1)
+	quit(0 if result.has("package") else 1)
 
 
 ## One line per piece: its kit name, its origin and three axes as Godot holds them, then the box its
