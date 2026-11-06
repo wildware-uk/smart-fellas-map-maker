@@ -85,6 +85,10 @@ const PLAIN_NAMES := {
 
 ## The starts of the names of the pieces that a brush counts as rock: what things can grow on.
 const SOLID_STARTS := ["rock_", "arch", "wreck", "platform"]
+## The starts of the names of the pieces the game lets things pass through: plants, and thin landmarks.
+const SOFT_STARTS := ["foliage_", "landmark_"]
+## The starts of the names of the big solid pieces that aren't rock, which painted can be grown on too.
+const BIG_STARTS := ["table_coral", "prop_crate", "prop_divebell"]
 
 ## How close to straight up or straight down `up` counts as exactly that: the same cutoff the game's
 ## maths library uses, one minus two 32-bit float epsilons.
@@ -160,6 +164,28 @@ static func is_solid(kit: String) -> bool:
 	return false
 
 
+## Whether the game makes this piece solid, so that what's placed can land on it: anything but plants
+## and thin landmarks, as the game's PartKind says.
+static func is_surface(kit: String) -> bool:
+	if not has(kit):
+		return false
+	for start: String in SOFT_STARTS:
+		if kit.begins_with(start):
+			return false
+	return true
+
+
+## Whether a painted piece of this kind is something to grow on: rock, or a big solid piece. Painted shells
+## and small coral are solid in the game too, but growing on them would heap a brush's pieces on each other.
+static func is_grown_on(kit: String) -> bool:
+	if is_solid(kit):
+		return true
+	for start: String in BIG_STARTS:
+		if kit.begins_with(start):
+			return has(kit)
+	return false
+
+
 ## What drawing this piece takes, loaded the first time it's asked for:
 ## {"mesh", "material", "triangles", "bounds", "radius", "solid"}. A piece the kit doesn't have, as in a map
 ## made before it went, has no mesh and costs nothing, and Export says so.
@@ -199,12 +225,17 @@ static func triangle_mesh(kit: String) -> TriangleMesh:
 	return _triangle_meshes[kit]
 
 
+## The faces of this piece, three corners each, in the piece's own space.
+static func faces_of(kit: String) -> PackedVector3Array:
+	if not _faces.has(kit):
+		_faces[kit] = (info(kit)["mesh"] as Mesh).get_faces()
+	return _faces[kit]
+
+
 ## Which way face `index` of this piece really faces, in the piece's own space. A TriangleMesh only says
 ## which way it faces the ray, which can't tell the outside of a rock from the inside.
 static func outward_of_face(kit: String, index: int) -> Vector3:
-	if not _faces.has(kit):
-		_faces[kit] = (info(kit)["mesh"] as Mesh).get_faces()
-	var faces: PackedVector3Array = _faces[kit]
+	var faces := faces_of(kit)
 	var a := faces[index * 3]
 	var b := faces[index * 3 + 1]
 	var c := faces[index * 3 + 2]

@@ -7,6 +7,7 @@ extends VBoxContainer
 const MapExporter := preload("map_exporter.gd")
 const MarkerKinds := preload("marker_kinds.gd")
 const Populate := preload("populate.gd")
+const Recipes := preload("recipes.gd")
 const SeabedTool := preload("seabed_tool.gd")
 const Version := preload("version.gd")
 
@@ -49,6 +50,8 @@ const SCULPT_MODES := [
 	[SeabedTool.Mode.ROCK, "Rock"],
 ]
 const PIECE_KINDS := ["spawn_octopus", "spawn_diver", "food_patch"]
+## What a map's own model may be made of, in the order the list offers them.
+const MODEL_GROUNDS := ["rock", "sand", "silt"]
 const WILDLIFE_KINDS := [
 	"fish_lionfish", "fish_flounder", "angler", "jellies", "lantern", "goblin_route", "wrasse", "stingray", "eel_hole", "groper_hole",
 ]
@@ -68,6 +71,11 @@ var _populate_said: Label
 var _sculpt_buttons := {}
 var _sculpt_wide: HSlider
 var _sculpt_strength: HSlider
+var _populate_surfaces: OptionButton
+var _populate_groups := {}
+var _models_list: VBoxContainer
+## The models the list was last made for, so that it's made again only when they change.
+var _models_listed: Array[String] = []
 
 
 func _ready() -> void:
@@ -106,6 +114,8 @@ func _ready() -> void:
 
 func _add_seabed(column: Control) -> void:
 	_add_heading(column, "Seabed")
+	_add_switch(column, "has_seabed", "Seabed")
+	_switches["has_seabed"].tooltip_text = "Untick for a map with no seabed: your pieces and models are the floor, and anyone who falls past them lands at the bottom of the map."
 	_label(column, "Press one, then hold the mouse down on the seabed. Esc or the right mouse button stops. Painted pieces and markers move with the ground. Pieces placed by hand stay put, so sculpt first.")
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -125,6 +135,10 @@ func _add_seabed(column: Control) -> void:
 	flatten.tooltip_text = "Make the seabed flat sand again."
 	flatten.pressed.connect(func() -> void: flatten_asked.emit())
 	column.add_child(flatten)
+	_add_heading(column, "Your own models")
+	_label(column, "What each of your own models is made of. Octopuses can bury themselves in sand and silt. Anything else is rock.")
+	_models_list = VBoxContainer.new()
+	column.add_child(_models_list)
 
 
 func _sculpt_slider(column: Control, words: String, limits: Vector3, value: float) -> HSlider:
@@ -169,7 +183,18 @@ func sculpt_strength() -> float:
 
 func _add_populate(column: Control) -> void:
 	_add_heading(column, "Populate")
-	_label(column, "Dresses the whole map with rocks, coral, grass, kelp, anemones, food and fish. Then fix it by hand. Doing it again only redoes its own work.")
+	_label(column, "Dresses the whole map with what's ticked, on the seabed and on your pieces and models, walls and overhangs too. Then fix it by hand. Doing it again only redoes its own work in what's ticked: what you placed yourself stays.")
+	var groups := GridContainer.new()
+	groups.columns = 2
+	for group: String in Populate.GROUPS:
+		var check := CheckBox.new()
+		check.text = Populate.GROUP_WORDS[group]
+		check.tooltip_text = Populate.GROUP_TIPS[group]
+		check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		check.toggled.connect(_on_populate_group_toggled.bind(group))
+		_populate_groups[group] = check
+		groups.add_child(check)
+	column.add_child(groups)
 	var line := HBoxContainer.new()
 	var label := Label.new()
 	label.text = "Seed"
@@ -182,6 +207,18 @@ func _add_populate(column: Control) -> void:
 	_seed_number.value = 1.0
 	line.add_child(_seed_number)
 	column.add_child(line)
+	var on := HBoxContainer.new()
+	var on_label := Label.new()
+	on_label.text = "Surfaces"
+	on_label.tooltip_text = "Where it dresses: the seabed, your pieces and models, or both."
+	on_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	on.add_child(on_label)
+	_populate_surfaces = OptionButton.new()
+	for words in ["Seabed and meshes", "Seabed only", "Meshes only"]:
+		_populate_surfaces.add_item(words)
+	_populate_surfaces.item_selected.connect(func(index: int) -> void: _set_property("populate_surfaces", Recipes.SURFACES[index]))
+	on.add_child(_populate_surfaces)
+	column.add_child(on)
 	var buttons := HBoxContainer.new()
 	var dress := _populate_button("Populate", "Dress the map from this seed.")
 	dress.pressed.connect(_on_populate)
@@ -209,7 +246,7 @@ func _on_populate() -> void:
 	var map := _map()
 	if map == null:
 		return
-	_say_populated(Populate.dress(map, int(_seed_number.value), undo))
+	_say_populated(Populate.dress(map, int(_seed_number.value), undo, map.populate_surfaces, map.populate_groups))
 
 
 func _on_try_again() -> void:
@@ -221,7 +258,16 @@ func _on_clear_populated() -> void:
 	var map := _map()
 	if map == null:
 		return
-	_say_populated(Populate.clear(map, undo))
+	_say_populated(Populate.clear(map, undo, map.populate_groups))
+
+
+func _on_populate_group_toggled(on: bool, group: String) -> void:
+	var map := _map()
+	if _showing or map == null:
+		return
+	var groups: Dictionary[String, bool] = map.populate_groups.duplicate()
+	groups[group] = on
+	_set_property("populate_groups", groups)
 
 
 func _say_populated(result: Dictionary) -> void:
@@ -336,6 +382,10 @@ func show_map() -> void:
 		_switches[key].button_pressed = map.get(key)
 	# The big shark is one of the hunters, so it needs them on.
 	_switches["shark"].disabled = not map.hunters
+	for group: String in _populate_groups:
+		_populate_groups[group].button_pressed = map.populate_groups.get(group, false)
+	_populate_surfaces.select(maxi(Recipes.SURFACES.find(map.populate_surfaces), 0))
+	_show_models(map)
 	_showing = false
 	var rules := MapExporter.read_rules(map)
 	var sizes := MapExporter.team_sizes(map, rules)
@@ -351,6 +401,55 @@ func show_map() -> void:
 		warned.append(warning["words"])
 	_warnings.text = "\n".join(warned)
 	_warnings.visible = not warned.is_empty()
+
+
+## A line for each of the map's own models, with what it's made of.
+func _show_models(map: SmartFellasMap) -> void:
+	var paths: Array[String] = []
+	for found in MapExporter.own_model_pieces(map):
+		# A mesh on its own has no file to mark, so it stays rock.
+		if found.has("alone"):
+			continue
+		if not found["path"] in paths:
+			paths.append(found["path"])
+	paths.sort()
+	if paths != _models_listed:
+		_models_listed = paths
+		for line in _models_list.get_children():
+			_models_list.remove_child(line)
+			line.queue_free()
+		if paths.is_empty():
+			_label(_models_list, "None yet. Drag a .glb from the FileSystem panel into the map.")
+		for path in paths:
+			var line := HBoxContainer.new()
+			var label := Label.new()
+			label.text = path.get_file()
+			label.tooltip_text = path
+			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			label.clip_text = true
+			line.add_child(label)
+			var choice := OptionButton.new()
+			for words in ["Rock", "Sand", "Silt"]:
+				choice.add_item(words)
+			choice.item_selected.connect(_on_model_ground_chosen.bind(path))
+			line.add_child(choice)
+			_models_list.add_child(line)
+	for index in paths.size():
+		var choice := _models_list.get_child(index).get_child(1) as OptionButton
+		choice.select(MODEL_GROUNDS.find(map.soft_models.get(paths[index], "rock")))
+
+
+
+func _on_model_ground_chosen(index: int, path: String) -> void:
+	var map := _map()
+	if _showing or map == null:
+		return
+	var grounds: Dictionary[String, String] = map.soft_models.duplicate()
+	if MODEL_GROUNDS[index] == "rock":
+		grounds.erase(path)
+	else:
+		grounds[path] = MODEL_GROUNDS[index]
+	_set_property("soft_models", grounds)
 
 
 ## The button for the marker being dropped stays in, and no other.

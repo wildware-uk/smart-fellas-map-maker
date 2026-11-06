@@ -2,6 +2,15 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.06-8f6839e
+
+- Placing pieces, painting, Populate and markers now land on any solid mesh, including your own models: tops, sides and undersides.
+- A map can have no seabed at all: untick Seabed in the Map panel and your pieces and models are the floor.
+- Your own models can be marked as Sand or Silt in the Map panel, so octopuses can bury themselves in them.
+- Populate has tick boxes for Scenery, Food, Creatures and Spawns, remembered for each map. Only Scenery is ticked at first, so markers you place yourself stay yours.
+- Moving a rock or model carries the pieces and markers placed on it.
+- Export and Test Map say plainly when a map has no spawn points or food, and how to add them.
+
 ## 2026.11.06-a8115b5
 
 - Cloning the map maker with git no longer shows Godot's cache and your exported maps as changes.

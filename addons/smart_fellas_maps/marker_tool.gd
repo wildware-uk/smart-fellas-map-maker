@@ -88,7 +88,7 @@ func handle_input(camera: Camera3D, event: InputEvent) -> bool:
 
 func _drop_at(hit: Dictionary) -> void:
 	if hit.is_empty():
-		said.emit("There's no sand or rock under the mouse to drop it on.")
+		said.emit("There's no seabed, rock or model under the mouse to drop it on.")
 		return
 	var at: Vector3 = hit["at"]
 	if absf(at.x) > map.half_width or absf(at.z) > map.half_width:

@@ -1,0 +1,29 @@
+{
+	"name": "Coral on walls",
+	"mix": [
+		{ "kit": "prop_bush_orange_0", "weight": 2.0 },
+		{ "kit": "prop_bush_pink_0", "weight": 2.0 },
+		{ "kit": "prop_bush_yellow_0", "weight": 1.5 },
+		{ "kit": "prop_tubes_0", "weight": 1.5 },
+		{ "kit": "prop_tubes_orange_0", "weight": 1.0 },
+		{ "kit": "foliage_fan_0", "weight": 1.5 },
+		{ "kit": "foliage_algae_1", "weight": 1.0 }
+	],
+	"wide": 1.5,
+	"thick": 2.0,
+	"turn": 180.0,
+	"size_low": 0.6,
+	"size_high": 1.2,
+	"wobble": 6.0,
+	"follow": 1.0,
+	"surfaces": "both",
+	"on_sand": false,
+	"on_rock": true,
+	"slope_low": 60.0,
+	"slope_high": 180.0,
+	"height_low": 0.0,
+	"height_high": 100.0,
+	"clumps": 0.6,
+	"clump_size": 2.0,
+	"seed": 1
+}

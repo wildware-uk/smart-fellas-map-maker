@@ -2,7 +2,8 @@
 class_name SmartFellasMap
 extends Node3D
 ## The top of a map's scene. Its children are what the map holds:
-## - a mesh called Seabed, whose height is the height of the flat sand, unless the map has been sculpted;
+## - a mesh called Seabed, whose height is the height of the flat sand, unless the map has been sculpted, or
+##   has no seabed at all;
 ## - kit pieces, dragged in from addons/smart_fellas_maps/models/kit/;
 ## - Marker3Ds that the Map panel drops in, whose names say what they are: spawn_octopus_..., spawn_diver_...,
 ##   food_patch_..., fish_lionfish_..., fish_flounder_..., angler_..., jellies_..., lantern_..., goblin_route_..., wrasse_...,
@@ -25,6 +26,21 @@ signal pieces_changed
 @export_range(10.0, 250.0) var half_width := 20.0
 ## The highest anyone can swim, in metres above the valley floor.
 @export_range(5.0, 100.0) var ceiling := 13.5
+
+@export_group("Seabed")
+## Whether the map has a seabed. With none, its pieces and models are the only floor, and the game catches
+## anyone who falls past them on an unseen floor at the bottom of the map.
+@export var has_seabed := true:
+	set(value):
+		has_seabed = value
+		show_seabed()
+		pieces_changed.emit()
+## Which of the map's own models are soft ground, by their file in this project: "sand" or "silt". An
+## octopus can bury itself in them. Any other model is rock.
+@export_storage var soft_models: Dictionary[String, String] = {}:
+	set(value):
+		soft_models = value
+		pieces_changed.emit()
 
 @export_group("Players")
 ## The fewest players the map is good for, counting everyone in the lobby.
@@ -74,6 +90,11 @@ signal pieces_changed
 ## The pieces the Populate button added, which are all in `painted` too, so that it can redo its own work
 ## and nothing else.
 @export_storage var populated: Dictionary[String, PackedFloat32Array] = {}
+## What the Populate button places here, by group, as Populate.GROUPS names them. Only scenery, unless the
+## map maker ticks the others, so that markers placed by hand as part of the design are never Populate's.
+@export_storage var populate_groups: Dictionary[String, bool] = {"scenery": true, "food": false, "creatures": false, "spawns": false}
+## Where the Populate button dresses: "both", "seabed" or "meshes", as Recipes.SURFACES.
+@export_storage var populate_surfaces := "both"
 
 ## The sculpted seabed: how far its grid runs from the middle each way, how many points each side has, the
 ## height of each a row at a time, and which squares are rock. With no grid, the seabed is flat.
@@ -149,10 +170,10 @@ func show_seabed() -> void:
 	var plane := find_child("Seabed", true, true) as MeshInstance3D
 	var grid: RefCounted = SeabedGrid.of(self)
 	if plane != null:
-		plane.visible = grid == null
-	_sculpted_sand.visible = grid != null
-	_sculpted_rock.visible = grid != null
-	_sculpted_moss.visible = grid != null
+		plane.visible = grid == null and has_seabed
+	_sculpted_sand.visible = grid != null and has_seabed
+	_sculpted_rock.visible = grid != null and has_seabed
+	_sculpted_moss.visible = grid != null and has_seabed
 	_ground_grid = grid
 	_ground_shape = {}
 	if grid == null:

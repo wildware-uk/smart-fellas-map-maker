@@ -76,10 +76,15 @@ static func why_it_cant_paint(map: SmartFellasMap, recipe: Dictionary) -> String
 	if not recipe["on_sand"] and not recipe["on_rock"]:
 		return "This brush grows on neither sand nor rock. Tick one under Where it grows."
 	var finder := SurfaceFinder.new(map)
+	var surfaces: String = recipe.get("surfaces", "both")
+	if surfaces == "seabed" and not finder.has_sand:
+		return "This map has no seabed, and this brush only grows on the seabed. Set Surfaces to meshes, or tick Seabed in the Map panel."
+	if surfaces == "meshes" and not finder.has_rock():
+		return "This brush only grows on meshes, and the map has none. Place a rock or a model of your own first."
 	if not finder.has_sand and not finder.has_rock():
-		return "This map has nothing to paint on. Add a mesh called Seabed, or a rock."
-	if not finder.has_sand and not recipe["on_rock"]:
-		return "This map has no Seabed, and this brush only grows on sand. Add a mesh called Seabed, or tick On rock."
+		return "This map has nothing to paint on. Tick Seabed in the Map panel, or place a rock or a model of your own."
+	if not finder.has_any_sand() and not recipe["on_rock"]:
+		return "This map has no sand, and this brush only grows on sand. Tick Seabed in the Map panel, mark one of your own models as sand in it, or tick On rock."
 	if MapExporter.kit_pieces(map).size() + map.painted_count() >= MapExporter.MOST_PIECES:
 		return FULL_WORDS % MapExporter.MOST_PIECES
 	return ""
@@ -168,7 +173,7 @@ func _paint_around(centre: Vector3, normal: Vector3) -> void:
 
 ## Whether the surface `hit` meets the brush's rules on where things grow, and is in the map.
 func _grows_on(hit: Dictionary) -> bool:
-	if not _recipe["on_sand" if hit["on"] == "sand" else "on_rock"]:
+	if not lands_on(_recipe, hit):
 		return false
 	var at: Vector3 = hit["at"]
 	var half_width: float = _map.half_width
@@ -181,6 +186,18 @@ func _grows_on(hit: Dictionary) -> bool:
 		return false
 	var slope := rad_to_deg(acos(clampf((hit["normal"] as Vector3).y, -1.0, 1.0)))
 	return slope >= _recipe["slope_low"] and slope <= _recipe["slope_high"]
+
+
+## Whether a recipe grows on the surface `hit`, as its sand, rock and surfaces settings say.
+static func lands_on(recipe: Dictionary, hit: Dictionary) -> bool:
+	match recipe.get("surfaces", "both"):
+		"seabed":
+			if not hit["seabed"]:
+				return false
+		"meshes":
+			if hit["seabed"]:
+				return false
+	return recipe["on_sand" if hit["on"] == "sand" else "on_rock"]
 
 
 ## Places a piece on the surface `hit`, if the clumps and the spacing allow. Gives back false if the
@@ -246,7 +263,7 @@ func _place(kit: String, at: Vector3, normal: Vector3, size: float, spread: floa
 	_note_spacing(at, spread, Kit.is_solid(kit))
 	if draws_as_it_goes:
 		_map.show_added(kit, values)
-	if Kit.is_solid(kit):
+	if Kit.is_grown_on(kit):
 		_finder.add_rock(kit, Kit.place_in_list(values, values.size() / Kit.STRIDE - 1))
 	placed += 1
 	_pieces_in_map += 1

@@ -24,7 +24,8 @@ const DEFAULTS := {
 	# grows, and 1 is square to the surface, as a limpet sits.
 	"wobble": 5.0,
 	"follow": 1.0,
-	# Where it grows.
+	# Where it grows: on the seabed, on solid pieces and models (which are sand or rock), or both.
+	"surfaces": "both",
 	"on_sand": true,
 	"on_rock": true,
 	"slope_low": 0.0,
@@ -56,6 +57,8 @@ const RANGES := {
 	"clump_size": Vector2(1.0, 25.0),
 }
 const MOST_WEIGHT := 10.0
+## What "surfaces" may be.
+const SURFACES := ["both", "seabed", "meshes"]
 const SEEDS := Vector2i(1, 99999)
 ## Each low limit, and the high limit it can't pass.
 const LOW_AND_HIGH := [["size_low", "size_high"], ["slope_low", "slope_high"], ["height_low", "height_high"]]
@@ -76,6 +79,8 @@ static func completed(given: Dictionary) -> Dictionary:
 	for key in ["on_sand", "on_rock"]:
 		if given.get(key) is bool:
 			recipe[key] = given[key]
+	if given.get("surfaces") in SURFACES:
+		recipe["surfaces"] = given["surfaces"]
 	var seed_given: Variant = given.get("seed")
 	if seed_given is float or seed_given is int:
 		recipe["seed"] = clampi(int(seed_given), SEEDS.x, SEEDS.y)

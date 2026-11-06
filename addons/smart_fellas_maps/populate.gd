@@ -1,11 +1,14 @@
 @tool
 extends RefCounted
-## The Populate button: dresses a whole map in one step of undo. Rocks first, then coral on rock, grass and
-## shells on the sand, kelp in the deep, anemones in the shelter of the rocks, then food and fish. The same
-## seed on the same map gives the same result.
+## The Populate button: dresses a whole map in one step of undo, with the groups ticked for it. Scenery:
+## rocks first, then coral on rock and on its walls and overhangs, grass and shells on the sand, kelp in the
+## deep, anemones in the shelter of the rocks. Food: food patches. Creatures: fish, stingray stops and wrasse
+## spots. Spawns: spawn points for a team that has none. The same seed on the same map gives the same
+## result. It dresses a map made only of pieces and models of its own, with no seabed, the same way:
+## on one with no sand anywhere, what grows on sand grows on the floors of the rock instead.
 ##
-## It only adds, or redoes its own work: what it added is noted on the map, and all else stays. A marker of
-## its own that has since been moved counts as placed by hand.
+## It only adds, or redoes its own work in the groups ticked: what it added is noted on the map, and all else
+## stays. A marker of its own that has since been moved counts as placed by hand.
 
 const Brush := preload("brush.gd")
 const Kit := preload("kit.gd")
@@ -23,6 +26,7 @@ const SurfaceFinder := preload("surface_finder.gd")
 const LAYERS := [
 	{"recipe": "Rock rubble", "per_100": 2.5, "where": "anywhere", "wide": 2.5, "thick": 0.4, "keep_clear": true, "grows": 2.5},
 	{"recipe": "Coral on rock", "per_100": 12.0, "where": "on_rock", "wide": 1.5, "thick": 2.5},
+	{"recipe": "Coral on walls", "per_100": 3.0, "where": "on_walls", "wide": 1.0, "thick": 2.0},
 	{"recipe": "Sand garden", "per_100": 28.0, "where": "anywhere", "wide": 2.5, "thick": 1.5},
 	{"recipe": "Kelp bed", "per_100": 5.0, "where": "deep", "wide": 3.0, "thick": 0.6},
 	{"recipe": "Anemone patch", "per_100": 2.0, "where": "sheltered", "wide": 1.5, "thick": 1.0},
@@ -43,6 +47,17 @@ const SQUARE_METRES_A_PATCH := 600.0
 const SQUARE_METRES_A_FISH := 450.0
 const PATCHES_APART := 0.35
 const MARKER_TRIES := 40
+## How many spots on the pieces' surfaces one try may look at, for one that suits the layer.
+const TRIES_ON_MESHES := 8
+## How far up a surface may face and still count as floor, as the up of its facing: about 37 degrees.
+const FLOOR_LIKE := 0.8
+## Spawn points it adds for a team that has none: how many, how much open water each has above it, how far
+## apart a team's keep, and how far they keep from where an eel, a groper or an anglerfish lies in wait.
+const SPAWNS_A_TEAM := 4
+const ROOM_ABOVE := 3.0
+const SPAWNS_APART := 6.0
+const CLEAR_OF_CREATURES := 8.0
+const CREATURE_KINDS := ["eel_hole", "groper_hole", "angler"]
 ## How much of what it aims for must land before it stops being worth a mention.
 const FELL_SHORT := 0.75
 ## A map too big for its share of pieces to cover it all is dressed in gardens: round patches as thick as
@@ -55,47 +70,78 @@ const GROWS_ON_BIG_MAPS := 1.3
 const GARDEN_SHARE := 0.12
 const GARDEN_RADII := Vector2(10.0, 20.0)
 const GARDEN_TRIES := 20
+## What it can place, in groups the map maker ticks: scenery, food, creatures and spawns, and the group of
+## each kind of marker it adds.
+const GROUPS := ["scenery", "food", "creatures", "spawns"]
+const GROUP_WORDS := {"scenery": "Scenery", "food": "Food", "creatures": "Creatures", "spawns": "Spawns"}
+const GROUP_TIPS := {
+	"scenery": "Plants, coral and rocks.",
+	"food": "Food patches. Leave it off to place food yourself, as part of the map's design.",
+	"creatures": "Fish, stingray stops and wrasse spots. Eel and groper holes are left to you: they need a real hole.",
+	"spawns": "Octopus and diver spawn points, for a team that has none.",
+}
+const GROUP_OF_KIND := {
+	"food_patch": "food",
+	"fish_flounder": "creatures", "fish_lionfish": "creatures", "stingray": "creatures", "wrasse": "creatures",
+	"spawn_octopus": "spawns", "spawn_diver": "spawns",
+}
+## Scenery alone, so that markers a map maker places by hand are never Populate's to redo.
+const FIRST_GROUPS: Dictionary[String, bool] = {"scenery": true, "food": false, "creatures": false, "spawns": false}
+## How many square metres to each stingray stop and wrasse spot it adds, and the fewest and most of each.
+const SQUARE_METRES_A_HAUNT := 1500.0
+const HAUNTS_A_KIND := Vector2i(2, 6)
 
 
-## Dresses `map` from `seed_number`, as one step of `history`, a plain UndoRedo or the editor's. Gives back
-## {"pieces", "markers", "words"}: what it added, and that in plain words.
-static func dress(map: SmartFellasMap, seed_number: int, history: Object) -> Dictionary:
-	return _redo(map, seed_number, history, LAYERS, "Populate the map")
+## Dresses `map` from `seed_number`, as one step of `history`, a plain UndoRedo or the editor's, on
+## `surfaces`: "both", "seabed" or "meshes", as Recipes.SURFACES, with the `groups` ticked, as GROUPS names
+## them. Gives back {"pieces", "markers", "words"}: what it added, and that in plain words.
+static func dress(map: SmartFellasMap, seed_number: int, history: Object, surfaces := "both", groups: Dictionary[String, bool] = FIRST_GROUPS) -> Dictionary:
+	return _redo(map, seed_number, history, true, "Populate the map", surfaces, groups)
 
 
-## Takes away what it added, as one step of `history`, and leaves all else.
-static func clear(map: SmartFellasMap, history: Object) -> Dictionary:
-	return _redo(map, 0, history, [], "Clear what Populate added")
+## Takes away what it added in the `groups` ticked, as one step of `history`, and leaves all else.
+static func clear(map: SmartFellasMap, history: Object, groups: Dictionary[String, bool] = FIRST_GROUPS) -> Dictionary:
+	return _redo(map, 0, history, false, "Clear what Populate added", "both", groups)
 
 
-static func _redo(map: SmartFellasMap, seed_number: int, history: Object, layers: Array, words: String) -> Dictionary:
+static func _redo(map: SmartFellasMap, seed_number: int, history: Object, adding: bool, words: String, surfaces: String, groups: Dictionary[String, bool]) -> Dictionary:
+	var ticked: Array[String] = []
+	for group: String in GROUPS:
+		if groups.get(group, false):
+			ticked.append(group)
+	if ticked.is_empty():
+		return {"pieces": 0, "markers": 0, "words": "Nothing is ticked, so nothing changed. Tick Scenery, Food, Creatures or Spawns."}
+	var scenery := "scenery" in ticked
 	var before_painted := map.painted
 	var before_own := map.populated
-	var old_markers := _own_markers(map)
-	var base := _without_own(map.painted, map.populated)
+	var old_markers: Array[Marker3D] = []
+	old_markers.assign(_own_markers(map).filter(func(marker: Marker3D) -> bool: return GROUP_OF_KIND.get(MarkerKinds.kind_of(marker.name), "") in ticked))
+	var base := _without_own(map.painted, map.populated) if scenery else map.painted
 	map.set_painted_quietly(base)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_number
-	var finder := SurfaceFinder.new(map)
-	var scale := _budget_scale(map)
-	var cover := minf(scale / GARDEN_THICKNESS, 1.0)
-	var gardens := _gardens(map, cover, rng)
+	var finder := SurfaceFinder.new(map, Recipes.SURFACES.find(surfaces))
 	var aimed := 0
 	var landed := 0
-	for layer: Dictionary in layers:
-		var result := _paint_layer(map, layer, seed_number, scale, cover, gardens, rng, finder)
-		aimed += result.x
-		landed += result.y
-	var own := _added_since(base, map.painted)
+	if adding and scenery:
+		var scale := _budget_scale(map)
+		var cover := minf(scale / GARDEN_THICKNESS, 1.0)
+		var gardens := _gardens(map, cover, rng)
+		for layer: Dictionary in LAYERS:
+			var result := _paint_layer(map, layer, seed_number, scale, cover, gardens, rng, finder, surfaces)
+			aimed += result.x
+			landed += result.y
+	var own := _added_since(base, map.painted) if scenery else before_own
 	var new_markers: Array[Marker3D] = []
-	if not layers.is_empty():
-		new_markers = _new_markers(map, old_markers, rng, finder)
+	if adding:
+		new_markers = _new_markers(map, old_markers, rng, finder, ticked)
 	var after_painted := map.painted
 	history.create_action(words)
-	history.add_do_property(map, "painted", after_painted)
-	history.add_undo_property(map, "painted", before_painted)
-	history.add_do_property(map, "populated", own)
-	history.add_undo_property(map, "populated", before_own)
+	if scenery:
+		history.add_do_property(map, "painted", after_painted)
+		history.add_undo_property(map, "painted", before_painted)
+		history.add_do_property(map, "populated", own)
+		history.add_undo_property(map, "populated", before_own)
 	for marker in old_markers:
 		Brush._on_do(history, map, "remove_child", [marker])
 		Brush._on_undo(history, map, "add_child", [marker])
@@ -111,14 +157,38 @@ static func _redo(map: SmartFellasMap, seed_number: int, history: Object, layers
 	map.set_painted_quietly(before_painted)
 	history.commit_action()
 	var pieces := 0
-	for kit: String in own:
-		pieces += own[kit].size() / Kit.STRIDE
-	var said := "Took away what Populate added."
-	if not layers.is_empty():
-		said = "Added %d pieces, %d food patches and fish. Press undo to take them back." % [pieces, new_markers.size()]
-		if landed < aimed * FELL_SHORT:
-			said += " It aimed for %d, since ground too steep for a recipe stays bare." % aimed
+	if scenery:
+		for kit: String in own:
+			pieces += own[kit].size() / Kit.STRIDE
+	var names: Array[String] = []
+	for group in ticked:
+		names.append(GROUP_WORDS[group])
+	var said := "Took away what Populate added in %s." % _listed(names)
+	if adding:
+		var parts: Array[String] = []
+		if scenery:
+			parts.append("%d pieces of scenery" % pieces)
+		var counts := {}
+		for marker in new_markers:
+			var kind := MarkerKinds.kind_of(marker.name)
+			counts[kind] = counts.get(kind, 0) + 1
+		for kind: String in counts:
+			var called := (MarkerKinds.KINDS[kind]["words"] as String).to_lower()
+			# One lionfish, two lionfish.
+			parts.append("%d %s" % [counts[kind], called + ("" if counts[kind] == 1 or called.ends_with("fish") else "s")])
+		said = "Added %s. Press undo to take them back." % (_listed(parts) if not parts.is_empty() else "nothing")
+		if scenery and landed < aimed * FELL_SHORT:
+			said += " It aimed for %d pieces, since ground too steep for a recipe stays bare." % aimed
+		if "spawns" in ticked and not counts.has("spawn_octopus") and not counts.has("spawn_diver"):
+			said += " Each team had spawn points already, so it added none."
 	return {"pieces": pieces, "markers": new_markers.size(), "words": said}
+
+
+## "a", "a and b", or "a, b and c".
+static func _listed(words: Array[String]) -> String:
+	if words.size() <= 1:
+		return "".join(words)
+	return "%s and %s" % [", ".join(words.slice(0, words.size() - 1)), words.back()]
 
 
 ## Less than one on a map so big that its share would pass MOST_PIECES.
@@ -161,7 +231,7 @@ static func _clear_of_gardens(garden: Vector3, gardens: PackedVector3Array) -> b
 
 
 ## Gives back how many pieces it aimed for and how many it placed, as (x, y).
-static func _paint_layer(map: SmartFellasMap, layer: Dictionary, seed_number: int, scale: float, cover: float, gardens: PackedVector3Array, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Vector2i:
+static func _paint_layer(map: SmartFellasMap, layer: Dictionary, seed_number: int, scale: float, cover: float, gardens: PackedVector3Array, rng: RandomNumberGenerator, finder: SurfaceFinder, surfaces: String) -> Vector2i:
 	var recipes := Recipes.all()
 	if not recipes.has(layer["recipe"]):
 		return Vector2i.ZERO
@@ -173,6 +243,10 @@ static func _paint_layer(map: SmartFellasMap, layer: Dictionary, seed_number: in
 	recipe["size_high"] = minf(recipe["size_high"] * growth, biggest)
 	recipe["wide"] = layer["wide"] * growth
 	recipe["thick"] = layer["thick"] / (growth * growth)
+	recipe["surfaces"] = surfaces
+	# With no sand anywhere, what grows on sand grows on the rock's floors.
+	if not finder.has_any_sand():
+		recipe["on_rock"] = true
 	if Brush.why_it_cant_paint(map, recipe) != "":
 		return Vector2i.ZERO
 	var brush := Brush.new()
@@ -183,7 +257,7 @@ static func _paint_layer(map: SmartFellasMap, layer: Dictionary, seed_number: in
 	for _spot in spots:
 		if brush.placed >= aim or not brush.stopped_because.is_empty():
 			break
-		var hit := _pick_spot(map, layer, recipe["wide"] + _widest_reach(recipe) + KEEP_CLEAR, gardens, rng, finder)
+		var hit := _pick_spot(map, layer, recipe, recipe["wide"] + _widest_reach(recipe) + KEEP_CLEAR, gardens, rng, finder)
 		if not hit.is_empty():
 			brush.hold_at(hit["at"], hit["normal"])
 	return Vector2i(aim, brush.placed)
@@ -192,10 +266,10 @@ static func _paint_layer(map: SmartFellasMap, layer: Dictionary, seed_number: in
 ## A spot for this layer, as SurfaceFinder.find gives it, or nothing if this try found none.
 ## `keep_clear` is how far from a marker the spot stays, if the layer keeps clear of them: how far its brush
 ## reaches, how far its biggest piece reaches past that, and room to spare.
-static func _pick_spot(map: SmartFellasMap, layer: Dictionary, keep_clear: float, gardens: PackedVector3Array, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
+static func _pick_spot(map: SmartFellasMap, layer: Dictionary, recipe: Dictionary, keep_clear: float, gardens: PackedVector3Array, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
 	match layer["where"]:
-		"on_rock":
-			return _on_a_rock(map, rng, finder)
+		"on_rock", "on_walls":
+			return _on_the_pieces(map, recipe, rng, finder)
 		"sheltered":
 			return _beside_a_rock(map, rng, finder)
 		"deep":
@@ -207,8 +281,9 @@ static func _pick_spot(map: SmartFellasMap, layer: Dictionary, keep_clear: float
 
 
 static func _ray_down(map: SmartFellasMap, x: float, z: float, finder: SurfaceFinder) -> Dictionary:
-	var top: float = finder.sand_height + map.ceiling + MapExporter.SCENERY_BEYOND
-	return finder.find(Vector3(x, top, z), Vector3(x, finder.sand_height - 1.0, z))
+	var top: float = maxf(finder.sand_height, finder.ceiling_measured_from()) + map.ceiling + MapExporter.SCENERY_BEYOND
+	var bottom: float = finder.sand_height - 1.0 if finder.has_sand else -MapExporter.BELOW_THE_FLOOR - 1.0
+	return finder.find(Vector3(x, top, z), Vector3(x, bottom, z))
 
 
 static func _anywhere(map: SmartFellasMap, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
@@ -255,12 +330,29 @@ static func _is_deeper(one: Vector3, other: Vector3) -> bool:
 	return Vector2(one.x, one.z).length() > Vector2(other.x, other.z).length()
 
 
-static func _on_a_rock(map: SmartFellasMap, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
-	if not finder.has_rock():
-		return {}
-	var box := finder.rock_box(rng.randi_range(0, finder.rock_count() - 1))
-	var hit := _ray_down(map, rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.z, box.end.z), finder)
-	return hit if not hit.is_empty() and hit["on"] == "rock" else {}
+## A spot anywhere on the pieces' surfaces, tops, sides and undersides alike, that the recipe grows on and is
+## steep enough or flat enough for, in the map.
+static func _on_the_pieces(map: SmartFellasMap, recipe: Dictionary, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
+	for _try in TRIES_ON_MESHES:
+		var hit := finder.random_spot(rng)
+		if hit.is_empty() or not Brush.lands_on(recipe, hit):
+			continue
+		var at: Vector3 = hit["at"]
+		if absf(at.x) > map.half_width or absf(at.z) > map.half_width:
+			continue
+		var slope := rad_to_deg(acos(clampf((hit["normal"] as Vector3).y, -1.0, 1.0)))
+		if slope >= recipe["slope_low"] and slope <= recipe["slope_high"]:
+			return hit
+	return {}
+
+
+## Whether `hit` is open ground: sand, or with no sand anywhere, a floor of the rock.
+static func _is_open_ground(hit: Dictionary, finder: SurfaceFinder) -> bool:
+	if hit.is_empty():
+		return false
+	if hit["on"] == "sand":
+		return true
+	return not finder.has_any_sand() and (hit["normal"] as Vector3).y >= FLOOR_LIKE
 
 
 static func _beside_a_rock(map: SmartFellasMap, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
@@ -275,7 +367,7 @@ static func _beside_a_rock(map: SmartFellasMap, rng: RandomNumberGenerator, find
 	if absf(x) > map.half_width or absf(z) > map.half_width:
 		return {}
 	var hit := _ray_down(map, x, z, finder)
-	return hit if not hit.is_empty() and hit["on"] == "sand" else {}
+	return hit if _is_open_ground(hit, finder) else {}
 
 
 static func _near_a_marker(map: SmartFellasMap, at: Vector3, within: float) -> bool:
@@ -286,22 +378,42 @@ static func _near_a_marker(map: SmartFellasMap, at: Vector3, within: float) -> b
 	return false
 
 
-## New food patches and fish, not yet in the map. Those of its own that are going don't count against room.
-static func _new_markers(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNumberGenerator, finder: SurfaceFinder) -> Array[Marker3D]:
+## New markers in the groups `ticked`, not yet in the map. Those of its own that are going don't count
+## against room.
+static func _new_markers(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNumberGenerator, finder: SurfaceFinder, ticked: Array[String]) -> Array[Marker3D]:
 	var made: Array[Marker3D] = []
+	if "food" in ticked:
+		_add_food(map, going, rng, finder, made)
+	if "creatures" in ticked:
+		_add_creatures(map, going, rng, finder, made)
+	if "spawns" in ticked:
+		for team: String in ["spawn_octopus", "spawn_diver"]:
+			var held := MarkerKinds.markers_of(map, team).filter(func(marker: Node) -> bool: return not marker in going)
+			if held.is_empty():
+				_add_spawns(map, team, rng, finder, made)
+	return made
+
+
+static func _add_food(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNumberGenerator, finder: SurfaceFinder, made: Array[Marker3D]) -> void:
 	var taken: Array[Vector3] = []
 	var patches_held := 0
 	for marker in MarkerKinds.markers_of(map, "food_patch"):
 		if not marker in going:
 			taken.append((marker as Node3D).global_position)
 			patches_held += 1
-	var patches := maxi(mini(roundi(_area_of(map) / SQUARE_METRES_A_PATCH), MapExporter.MOST_PATCHES) - patches_held, 0)
+	# At least as many as the game needs, on the smallest map.
+	var wanted := clampi(roundi(_area_of(map) / SQUARE_METRES_A_PATCH), MapExporter.FEWEST_PATCHES, MapExporter.MOST_PATCHES)
+	var patches := maxi(wanted - patches_held, 0)
 	var apart: float = map.half_width * PATCHES_APART
 	for _patch in patches:
 		var hit := _spot_for_food(map, taken, apart, rng, finder)
 		if not hit.is_empty():
 			taken.append(hit["at"])
 			_add_marker(map, "food_patch", hit["at"], hit["normal"], made)
+
+
+## Fish, stingray stops and wrasse spots, as many as the map's size calls for, less those it has already.
+static func _add_creatures(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNumberGenerator, finder: SurfaceFinder, made: Array[Marker3D]) -> void:
 	var fish_held := 0
 	for kind: String in ["fish_flounder", "fish_lionfish"]:
 		for marker in MarkerKinds.markers_of(map, kind):
@@ -311,13 +423,59 @@ static func _new_markers(map: SmartFellasMap, going: Array[Marker3D], rng: Rando
 	for index in fish:
 		if index % 2 == 0:
 			var hit := _anywhere(map, rng, finder)
-			if not hit.is_empty() and hit["on"] == "sand":
+			if _is_open_ground(hit, finder):
 				_add_marker(map, "fish_flounder", hit["at"], Vector3.UP, made)
 		else:
 			var hit := _beside_a_rock(map, rng, finder)
 			if not hit.is_empty():
 				_add_marker(map, "fish_lionfish", hit["at"], Vector3.UP, made)
-	return made
+	var haunts := clampi(roundi(_area_of(map) / SQUARE_METRES_A_HAUNT), HAUNTS_A_KIND.x, HAUNTS_A_KIND.y)
+	# Stingrays glide from stop to stop over open ground; wrasse keep a cleaning spot beside a rock.
+	for kind: String in ["stingray", "wrasse"]:
+		if kind == "stingray" and not map.stingrays:
+			continue
+		var held := MarkerKinds.markers_of(map, kind).filter(func(marker: Node) -> bool: return not marker in going).size()
+		var placed := 0
+		for _try in MARKER_TRIES:
+			if placed >= mini(haunts, MapExporter.MOST_HAUNTS) - held:
+				break
+			var hit := _anywhere(map, rng, finder) if kind == "stingray" else _beside_a_rock(map, rng, finder)
+			if kind == "stingray" and not _is_open_ground(hit, finder):
+				continue
+			if hit.is_empty():
+				continue
+			_add_marker(map, kind, hit["at"], Vector3.UP, made)
+			placed += 1
+
+
+## SPAWNS_A_TEAM spawn points for a team that has none: on open floor with room above, a team's at one end
+## of the map and the other's at the other, apart from each other and clear of what lies in wait.
+static func _add_spawns(map: SmartFellasMap, team: String, rng: RandomNumberGenerator, finder: SurfaceFinder, made: Array[Marker3D]) -> void:
+	var side := -1.0 if team == "spawn_octopus" else 1.0
+	var reach: float = map.half_width * EDGE_SHARE
+	var lurking: Array[Vector3] = []
+	for kind: String in CREATURE_KINDS:
+		for marker in MarkerKinds.markers_of(map, kind):
+			lurking.append((marker as Node3D).global_position)
+	var placed: Array[Vector3] = []
+	for _try in MARKER_TRIES * SPAWNS_A_TEAM * 2:
+		if placed.size() >= SPAWNS_A_TEAM:
+			break
+		var x := side * rng.randf_range(reach * 0.5, reach)
+		var hit := _ray_down(map, x, rng.randf_range(-reach, reach), finder)
+		if hit.is_empty() or (hit["normal"] as Vector3).y < FLOOR_LIKE:
+			continue
+		var at: Vector3 = hit["at"]
+		if not finder.find(at + Vector3.UP * 0.05, at + Vector3.UP * ROOM_ABOVE).is_empty():
+			continue
+		if at.y + ROOM_ABOVE > finder.ceiling_measured_from() + map.ceiling:
+			continue
+		if placed.any(func(other: Vector3) -> bool: return other.distance_to(at) < SPAWNS_APART):
+			continue
+		if lurking.any(func(other: Vector3) -> bool: return other.distance_to(at) < CLEAR_OF_CREATURES):
+			continue
+		placed.append(at)
+		_add_marker(map, team, at, hit["normal"], made)
 
 
 ## Open sand for a patch with room for its ring of food, away from others, or nothing if it finds none.
@@ -325,7 +483,7 @@ static func _spot_for_food(map: SmartFellasMap, taken: Array[Vector3], apart: fl
 	var reach: float = map.half_width - MapExporter.SPOT_RING - 0.1
 	for _try in MARKER_TRIES:
 		var hit := _ray_down(map, rng.randf_range(-reach, reach), rng.randf_range(-reach, reach), finder)
-		if hit.is_empty() or hit["on"] != "sand":
+		if not _is_open_ground(hit, finder) or not _ring_lies_on_ground(hit, finder):
 			continue
 		var at: Vector3 = hit["at"]
 		var clear := true
@@ -334,6 +492,22 @@ static func _spot_for_food(map: SmartFellasMap, taken: Array[Vector3], apart: fl
 		if clear:
 			return hit
 	return {}
+
+
+## Whether each of a patch's food spots, round `hit`, has ground right under it, so that none floats off the
+## edge of a rock or sinks into it.
+static func _ring_lies_on_ground(hit: Dictionary, finder: SurfaceFinder) -> bool:
+	if hit["seabed"]:
+		return true
+	var up: Vector3 = hit["normal"]
+	var basis := Basis(Kit.arc_from_up(up))
+	for index in MapExporter.SPOTS_IN_A_PATCH:
+		var angle := TAU * index / MapExporter.SPOTS_IN_A_PATCH
+		var spot: Vector3 = hit["at"] + basis * (Vector3(cos(angle), 0.0, sin(angle)) * MapExporter.SPOT_RING)
+		var under := finder.find(spot + up * MapExporter.FOOD_FOLLOWS_WITHIN, spot - up * MapExporter.FOOD_FOLLOWS_WITHIN)
+		if under.is_empty():
+			return false
+	return true
 
 
 ## A marker with a number of its own among those already made in this go.

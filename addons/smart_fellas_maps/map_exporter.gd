@@ -14,6 +14,8 @@ const KIT_FOLDER := Kit.FOLDER
 const FORMAT := 2
 ## The game's SCULPTED_FORMAT, for a map with a sculpted seabed.
 const SCULPTED_FORMAT := 3
+## The game's NO_SEABED_FORMAT, for a map with no seabed, or with models of its own that are sand or silt.
+const NO_SEABED_FORMAT := 5
 ## The game's MODELS_FORMAT, for a map with models of its own.
 const MODELS_FORMAT := 4
 ## Where a map's own models go in its package.
@@ -136,6 +138,8 @@ class Scene:
 	var models := {}
 	## The pictures those models keep beside themselves, by their name in assets/, as their file here.
 	var pictures := {}
+	## The surfaces of the map's pieces and seabed, for what lies on them, made once Export needs it.
+	var finder: RefCounted
 	## The models Export made itself, from a model the game can't take as it is, by their name in assets/,
 	## as the .glb's bytes. Their names are in `models` too.
 	var built := {}
@@ -511,6 +515,9 @@ static func _read_scene(root: SmartFellasMap) -> Scene:
 	_read_own_models(root, scene)
 	_read_painted(root, scene)
 	_check_piece_names(scene)
+	scene.finder = load("res://addons/smart_fellas_maps/surface_finder.gd").new(root)
+	_warn_of_spawns_over_nothing(root, scene)
+	_warn_of_food_over_nothing(root, scene)
 	if scene.pieces.size() > MOST_PIECES:
 		scene.problems.append("The map places %d pieces, and the most a map can place is %d. Remove some." % [scene.pieces.size(), MOST_PIECES])
 	return scene
@@ -525,14 +532,16 @@ static func read_rules(root: SmartFellasMap) -> Scene:
 	_check_range("The map's half width", root.half_width, HALF_WIDTHS, scene)
 	_check_range("The map's ceiling", root.ceiling, CEILINGS, scene)
 	_read_children(root, scene)
-	if not scene.has_seabed:
-		scene.problems.append("The map has no seabed. Add a mesh called Seabed at the height of the sand.")
+	if not root.has_seabed:
+		scene.has_seabed = false
+	elif not scene.has_seabed:
+		scene.problems.append("The map has no seabed. Add a mesh called Seabed at the height of the sand, or untick Seabed in the Map panel for a map with none.")
 	elif root.seabed_side == 0 and (scene.seabed_height < -BELOW_THE_FLOOR or scene.seabed_height > root.ceiling):
 		scene.problems.append("The seabed is at a height of %s. It must be from %s to the map's ceiling, %s." % [scene.seabed_height, -BELOW_THE_FLOOR, root.ceiling])
 	_check_sculpted(root, scene)
 	for team in [["octopus", scene.octopus_spawns], ["diver", scene.diver_spawns]]:
 		if team[1].is_empty():
-			scene.problems.append("The map has no %s spawn points. Add one in the Map panel." % team[0])
+			scene.problems.append("This map has no %s spawn points: place some from the Map panel, or tick Spawns in Populate." % team[0])
 		elif team[1].size() > MOST_SPAWNS:
 			scene.problems.append("The map has %d %s spawn points. The limit is %d. Remove some." % [team[1].size(), team[0], MOST_SPAWNS])
 	_check_patches(scene)
@@ -547,7 +556,7 @@ static func read_rules(root: SmartFellasMap) -> Scene:
 
 ## The game holds a sculpted seabed to these too.
 static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
-	if root.seabed_side == 0 and root.seabed_heights.is_empty():
+	if not root.has_seabed or (root.seabed_side == 0 and root.seabed_heights.is_empty()):
 		return
 	var side: int = root.seabed_side
 	if side < 2 or side > MOST_SEABED_SIDE or root.seabed_heights.size() != side * side or root.seabed_rock.size() != (side - 1) * (side - 1):
@@ -579,6 +588,33 @@ static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
 		scene.problems.append("The sculpted seabed rises %.1f m in a metre somewhere, and the most the game takes is %s m. Smooth it." % [steepest / spacing, MOST_SEABED_SLOPE])
 
 
+## With no seabed, a spawn point with nothing under it drops whoever starts there to the bottom of the map.
+## The map maker may mean it, so it's only a warning.
+static func _warn_of_spawns_over_nothing(root: SmartFellasMap, scene: Scene) -> void:
+	if root.has_seabed:
+		return
+	for spawn in scene.octopus_spawns + scene.diver_spawns:
+		var at: Vector3 = spawn["at"]
+		if scene.finder.find(at, Vector3(at.x, -BELOW_THE_FLOOR - 1.0, at.z)).is_empty():
+			scene.warnings.append({
+				"words": "%s has nothing under it, and the map has no seabed: anyone starting there falls to the bottom of the map. Move it over a piece." % spawn["node"].name,
+				"node": spawn["node"],
+			})
+
+
+## With no seabed, a food patch with nothing under it hangs in open water, where its food floats.
+static func _warn_of_food_over_nothing(root: SmartFellasMap, scene: Scene) -> void:
+	if root.has_seabed:
+		return
+	for patch in scene.patches:
+		var up: Vector3 = patch["up"]
+		if scene.finder.find(patch["at"] + up * FOOD_FOLLOWS_WITHIN, patch["at"] - up * FOOD_FOLLOWS_WITHIN).is_empty():
+			scene.warnings.append({
+				"words": "%s has nothing under it, and the map has no seabed: its food floats in open water. Move it onto a piece." % patch["node"].name,
+				"node": patch["node"],
+			})
+
+
 ## The game refuses a spawn point under the seabed, where anyone starting would be stuck.
 static func _check_spawns_above_the_ground(root: SmartFellasMap, scene: Scene) -> void:
 	var grid: RefCounted = SeabedGrid.of(root)
@@ -596,7 +632,7 @@ static func _check_range(what: String, value: float, limits: Vector2, scene: Sce
 
 static func _check_patches(scene: Scene) -> void:
 	if scene.patches.is_empty():
-		scene.problems.append("The map has no food patches. Add at least %d in the Map panel." % FEWEST_PATCHES)
+		scene.problems.append("This map has no food patches: place at least %d from the Map panel, or tick Food in Populate." % FEWEST_PATCHES)
 	elif scene.patches.size() < FEWEST_PATCHES:
 		scene.problems.append("The map has one food patch. Food only grows in two thirds of them at once, so it needs at least %d." % FEWEST_PATCHES)
 	elif scene.patches.size() > MOST_PATCHES:
@@ -690,7 +726,8 @@ static func _read_children(node: Node, scene: Scene, hider: Node = null) -> void
 				scene.problem_on(child, "%s is a scene inside this one, and Export can't see the pieces in it. Right-click it in the Scene panel and choose Make Local." % child.name)
 			continue
 		if _is_the_seabed(child):
-			_read_seabed(child, scene)
+			if _root_of(child).has_seabed:
+				_read_seabed(child, scene)
 		elif child is Marker3D:
 			if hidden:
 				scene.left_out_hidden(hidden_by, "markers")
@@ -750,7 +787,7 @@ static func _read_marker(marker: Marker3D, scene: Scene) -> void:
 		scene.diver_spawns.append({"at": place.origin, "yaw": _yaw_of(place.basis), "node": marker})
 		scene.sources["Diver spawn"].append(marker)
 	elif words.begins_with(FOOD_PATCH):
-		scene.patches.append({"at": place.origin, "up": place.basis.y.normalized(), "basis": place.basis.orthonormalized()})
+		scene.patches.append({"at": place.origin, "up": place.basis.y.normalized(), "basis": place.basis.orthonormalized(), "node": marker})
 		scene.sources["Food patch"].append(marker)
 		for _spot in SPOTS_IN_A_PATCH:
 			scene.sources["Food spot"].append(marker)
@@ -840,8 +877,10 @@ static func _warn_if_under_the_ground(marker: Marker3D, scene: Scene) -> void:
 ## How far under the ground this marker is, in metres, or 0 or less if it isn't.
 static func _how_far_under_the_ground(marker: Marker3D) -> float:
 	var root := _root_of(marker)
-	var grid: RefCounted = SeabedGrid.of(root)
 	var at := marker.global_position
+	if not root.has_seabed:
+		return -BELOW_THE_FLOOR - at.y
+	var grid: RefCounted = SeabedGrid.of(root)
 	var seabed := root.find_child("Seabed", true, true) as Node3D
 	var flat: float = seabed.global_position.y if seabed != null else 0.0
 	var ground: float = grid.height_at(at.x, at.z) if grid != null else flat
@@ -1284,19 +1323,30 @@ static func _piece_lines(pieces: Array[Dictionary]) -> String:
 	return lines
 
 
-## A ring of spots round each patch, lying on the patch's own ground. The real rules for filling a
-## map with food come in a later step.
-static func _food_lines(patches: Array[Dictionary], grid: RefCounted) -> Dictionary:
+## A ring of spots round each patch, lying on the patch's own ground: the seabed, or the piece it's on,
+## which also says whether that ground is sand or rock. The real rules for filling a map with food come in a
+## later step.
+static func _food_lines(patches: Array[Dictionary], grid: RefCounted, finder: RefCounted) -> Dictionary:
 	var patch_lines := ""
 	var spot_lines := ""
 	var number := 0
 	for patch in patches:
+		var up: Vector3 = patch["up"]
+		var under: Dictionary = {} if finder == null else finder.find(patch["at"] + up * FOOD_FOLLOWS_WITHIN, patch["at"] - up * FOOD_FOLLOWS_WITHIN)
+		var on_a_piece: bool = not under.is_empty() and not under["seabed"]
 		var ground := "Rock" if grid != null and grid.is_rock_at(patch["at"].x, patch["at"].z) else "Sand"
+		if on_a_piece:
+			ground = "Sand" if under["on"] == "sand" else "Rock"
 		patch_lines += "            (at: %s, up: %s, ground: %s),\n" % [_xyz(patch["at"]), _xyz(patch["up"]), ground]
 		for index in SPOTS_IN_A_PATCH:
 			var spot := _food_spot(patch, index)
+			if on_a_piece:
+				# A patch lying on a piece has its food on that piece, however it curves.
+				var on_it: Dictionary = finder.find(spot + up * FOOD_FOLLOWS_WITHIN, spot - up * FOOD_FOLLOWS_WITHIN)
+				if not on_it.is_empty():
+					spot = on_it["at"]
 			# A patch lying on sculpted ground has its food on that ground, however it curves.
-			if grid != null and absf(patch["at"].y - grid.height_at(patch["at"].x, patch["at"].z)) < FOOD_FOLLOWS_WITHIN:
+			elif grid != null and absf(patch["at"].y - grid.height_at(patch["at"].x, patch["at"].z)) < FOOD_FOLLOWS_WITHIN:
 				spot.y = grid.height_at(spot.x, spot.z)
 			spot_lines += "            (at: %s, up: %s, ground: %s, patch: %d),\n" % [_xyz(spot), _xyz(patch["up"]), ground, number]
 		number += 1
@@ -1305,7 +1355,7 @@ static func _food_lines(patches: Array[Dictionary], grid: RefCounted) -> Diction
 
 ## The heights the shark may swim at. On flat sand, one does. Over sculpted hills it has others to try.
 static func _shark_heights(root: SmartFellasMap) -> String:
-	if root.seabed_side == 0:
+	if root.seabed_side == 0 and root.has_seabed:
 		return _number(root.ceiling * 0.6)
 	var heights := PackedStringArray()
 	for share in [0.6, 0.75, 0.85, 0.45]:
@@ -1314,6 +1364,8 @@ static func _shark_heights(root: SmartFellasMap) -> String:
 
 
 static func _seabed_text(root: SmartFellasMap, scene: Scene) -> String:
+	if not root.has_seabed:
+		return "None"
 	if root.seabed_side == 0:
 		return "Flat(height: %s)" % _number(scene.seabed_height)
 	var heights := PackedStringArray()
@@ -1324,6 +1376,24 @@ static func _seabed_text(root: SmartFellasMap, scene: Scene) -> String:
 		if root.seabed_rock[cell] != 0:
 			rock.append(str(cell))
 	return "Sculpted((reach: %s, side: %d, heights: [%s], rock_cells: [%s]))" % [_number(root.seabed_reach), root.seabed_side, ", ".join(heights), ", ".join(rock)]
+
+
+## Which of the map's own models are sand or silt, by their names in the package, or nothing if none is, as
+## the game leaves it out.
+static func _soft_models_text(root: SmartFellasMap, scene: Scene) -> String:
+	var names: Array = scene.models.keys()
+	names.sort()
+	var entries := ""
+	var grounds := {}
+	for path: String in root.soft_models:
+		grounds[ProjectSettings.globalize_path(path)] = root.soft_models[path]
+	for name: String in names:
+		var ground: String = grounds.get(scene.models[name], "rock")
+		if ground == "sand" or ground == "silt":
+			entries += "(model: \"%s\", ground: %s), " % [name, ground.capitalize()]
+	if entries.is_empty():
+		return ""
+	return "    soft_models: [%s],\n" % entries
 
 
 static func _switch(on: bool) -> String:
@@ -1395,7 +1465,7 @@ static func _haunts_text(scene: Scene) -> String:
 
 
 static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
-	var food := _food_lines(scene.patches, SeabedGrid.of(root))
+	var food := _food_lines(scene.patches, SeabedGrid.of(root) if root.has_seabed else null, scene.finder)
 	var most_growing := maxi(scene.patches.size() * 2 / 3, 1)
 	var sizes := team_sizes(root, scene)
 	var divers: int = sizes["divers"]
@@ -1403,6 +1473,9 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	var format := SCULPTED_FORMAT if root.seabed_side != 0 else FORMAT
 	if not scene.models.is_empty():
 		format = MODELS_FORMAT
+	var soft := _soft_models_text(root, scene)
+	if not root.has_seabed or not soft.is_empty():
+		format = NO_SEABED_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]
 	text += "    size: (half_width: %s, ceiling: %s),\n" % [_number(root.half_width), _number(root.ceiling)]
 	text += "    seabed: %s,\n" % _seabed_text(root, scene)
@@ -1428,5 +1501,6 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += _anglers_text(root, scene)
 	text += _lantern_text(scene)
 	text += _haunts_text(scene)
+	text += soft
 	text += ")\n"
 	return text

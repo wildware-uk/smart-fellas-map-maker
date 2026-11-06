@@ -6,6 +6,7 @@ extends EditorPlugin
 
 const Brush := preload("brush.gd")
 const BrushTool := preload("brush_tool.gd")
+const Carrier := preload("carrier.gd")
 const CostBar := preload("cost_bar.gd")
 const GameFinder := preload("game_finder.gd")
 const MapExporter := preload("map_exporter.gd")
@@ -52,6 +53,7 @@ var _marker_gizmos: EditorNode3DGizmoPlugin
 var _sculptor: SeabedTool
 var _cost_bar: Control
 var _tool: BrushTool
+var _carrier: Carrier
 var _drops: Array[Control] = []
 var _map: SmartFellasMap
 var _cost_is_stale := true
@@ -115,6 +117,9 @@ func _enter_tree() -> void:
 		_sculptor.wide = wide
 		_sculptor.strength = strength
 		update_overlays())
+	_carrier = Carrier.new()
+	_carrier.history = get_undo_redo()
+	EditorInterface.get_selection().selection_changed.connect(_on_selection_changed)
 	_marker_gizmos = MarkerGizmos.new()
 	add_node_3d_gizmo_plugin(_marker_gizmos)
 	_pieces_panel = PiecesPanel.new()
@@ -145,6 +150,7 @@ func _exit_tree() -> void:
 	scene_changed.disconnect(_on_scene_changed)
 	get_undo_redo().version_changed.disconnect(_on_history_changed)
 	get_undo_redo().history_changed.disconnect(_on_history_changed)
+	EditorInterface.get_selection().selection_changed.disconnect(_on_selection_changed)
 	get_tree().node_added.disconnect(_on_tree_changed)
 	get_tree().node_removed.disconnect(_on_tree_changed)
 	_tool.end_stroke()
@@ -200,6 +206,7 @@ func _add_drops() -> void:
 
 
 func _process(delta: float) -> void:
+	_carrier.tick()
 	_tool.tick(delta)
 	_sculptor.tick(delta)
 	_markers.tick()
@@ -265,6 +272,10 @@ func _on_sculpting_asked(mode: int) -> void:
 	if mode == -1:
 		_sculptor.stop()
 		return
+	if _map != null and not _map.has_seabed:
+		_map_panel.show_sculpting(-1)
+		_say("This map has no seabed to sculpt. Tick Seabed in the Map panel first.")
+		return
 	_paint_panel.set_painting(false)
 	_markers.stop()
 	EditorInterface.set_main_screen_editor("3D")
@@ -304,9 +315,17 @@ func _on_scene_changed(scene: Node) -> void:
 	_markers.map = map
 	_sculptor.stop()
 	_sculptor.map = map
+	_carrier.watch(null)
+	_carrier.map = map
 	_paint_panel.set_has_map(map != null)
 	_say_why_the_brush_cant_paint()
 	_cost_is_stale = true
+
+
+## One piece or model selected alone is watched, so that what stands on it moves with it.
+func _on_selection_changed() -> void:
+	var selected := EditorInterface.get_selection().get_top_selected_nodes()
+	_carrier.watch(selected[0] as Node3D if selected.size() == 1 else null)
 
 
 func _watch_map(map: SmartFellasMap) -> void:

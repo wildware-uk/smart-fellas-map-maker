@@ -47,15 +47,18 @@ static func markers_of(map: Node, kind: String) -> Array[Node]:
 	return found
 
 
-## A new marker of this kind for a surface at `at`, not yet in the map: the next free number, facing the
-## middle of the map if it's a spawn point.
+## A new marker of this kind for a surface at `at`, facing `normal`, not yet in the map: the next free
+## number, facing the middle of the map if it's a spawn point. It's lifted off the surface the way the
+## surface faces, so one dropped on a wall or under a ledge stays out of the rock, and only a kind that lies
+## square to the surface leans with it: the rest stand upright, as the game holds them.
 static func new_marker(map: Node3D, kind: String, at: Vector3, normal: Vector3) -> Marker3D:
 	var info: Dictionary = KINDS[kind]
 	var marker: Marker3D = WildlifeMarker.new() if info.get("script", false) else Marker3D.new()
 	marker.name = "%s%d" % [info["prefix"], _next_number(map, info["prefix"])]
 	var ceiling: float = map.get("ceiling")
 	var lift: float = info["lift"]
-	var spot := at + Vector3.UP * lift
+	var away := normal.normalized() if normal.is_finite() and not normal.is_zero_approx() else Vector3.UP
+	var spot := at + away * lift
 	spot.y = minf(spot.y, ceiling)
 	var turn := 0.0
 	if kind.begins_with("spawn") and Vector2(spot.x, spot.z).length() > 0.01:

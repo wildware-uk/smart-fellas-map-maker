@@ -52,6 +52,7 @@ var _mix_empty: Label
 var _sliders := {}
 var _on_sand: CheckBox
 var _on_rock: CheckBox
+var _surfaces: OptionButton
 var _seed: SpinBox
 var _erase_hand: CheckBox
 var _erase_only_mix: CheckBox
@@ -193,15 +194,28 @@ func _add_where() -> void:
 	var line := HBoxContainer.new()
 	_on_sand = CheckBox.new()
 	_on_sand.text = "On sand"
-	_on_sand.tooltip_text = "Grows on the seabed."
+	_on_sand.tooltip_text = "Grows on sand: the seabed, or a model of your own marked as sand or silt."
 	_on_sand.toggled.connect(func(on: bool) -> void: _set_setting("on_sand", on))
 	line.add_child(_on_sand)
 	_on_rock = CheckBox.new()
 	_on_rock.text = "On rock"
-	_on_rock.tooltip_text = "Grows on rocks and wrecks, whether placed by hand or painted."
+	_on_rock.tooltip_text = "Grows on rocks, wrecks, solid coral and your own models, whether placed by hand or painted."
 	_on_rock.toggled.connect(func(on: bool) -> void: _set_setting("on_rock", on))
 	line.add_child(_on_rock)
 	list.add_child(line)
+	var on := HBoxContainer.new()
+	var on_label := Label.new()
+	on_label.text = "Surfaces"
+	on_label.custom_minimum_size = Vector2(LABEL_WIDTH, 0.0)
+	on.add_child(on_label)
+	_surfaces = OptionButton.new()
+	_surfaces.tooltip_text = "Where it can land: the seabed, solid pieces and models (rocks, wrecks, your own models), or both."
+	for words in ["Seabed and meshes", "Seabed only", "Meshes only"]:
+		_surfaces.add_item(words)
+	_surfaces.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_surfaces.item_selected.connect(func(index: int) -> void: _set_setting("surfaces", Recipes.SURFACES[index]))
+	on.add_child(_surfaces)
+	list.add_child(on)
 	for row in WHERE_IT_GROWS:
 		_add_slider(list, row)
 	var pattern := HBoxContainer.new()
@@ -357,6 +371,7 @@ func _show_recipe() -> void:
 		_on_slider(key, _recipe[key])
 	_on_sand.button_pressed = _recipe["on_sand"]
 	_on_rock.button_pressed = _recipe["on_rock"]
+	_surfaces.select(Recipes.SURFACES.find(_recipe["surfaces"]))
 	_seed.value = _recipe["seed"]
 	_show_mix()
 	_showing = false
