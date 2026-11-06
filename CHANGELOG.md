@@ -2,6 +2,10 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.06-a8115b5
+
+- Cloning the map maker with git no longer shows Godot's cache and your exported maps as changes.
+
 ## 2026.11.06-7782a32
 
 The map maker as it was when it first went public:
