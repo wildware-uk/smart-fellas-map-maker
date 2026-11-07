@@ -14,6 +14,7 @@ const SeabedTool := preload("seabed_tool.gd")
 const UpdateBanner := preload("update_banner.gd")
 const UpdateBox := preload("update_box.gd")
 const Zone := preload("populate_zone.gd")
+const TriggerZone := preload("trigger_zone.gd")
 
 signal placing_asked(kind: String)
 signal sculpting_asked(mode: int)
@@ -129,6 +130,7 @@ func _ready() -> void:
 	_add_heading(column, "Wildlife")
 	_label(column, "Press one, then click on the map. Drag to scatter fish. Select a jellyfish group or lantern school to set its size in the Inspector.")
 	_add_place_buttons(column, WILDLIFE_KINDS)
+	_add_script_zones(column)
 	# Below every button, so that the buttons don't jump about under the mouse as it changes. Pinned
 	# under the scrolling part, it took most of a dock's height and hid the rest (#214).
 	column.add_child(HSeparator.new())
@@ -487,6 +489,19 @@ func _add_place_buttons(column: Control, kinds: Array) -> void:
 		column.add_child(button)
 
 
+func _add_script_zones(column: Control) -> void:
+	_add_heading(column, "Map scripts")
+	_label(column, "A trigger zone is a box the map's script hears players and spears go into and out of, found by its name with game.zone(\"name\"). Press, then click on the map to drop one. It's selected then: drag its arrows to move it, and the dots on its sides to size it. Rename it in the Scene panel, using lowercase letters, digits, dashes and underscores. Only the editor shows it: players never see it.")
+	var button := Button.new()
+	button.text = "Add: %s" % TriggerZone.WORDS
+	button.tooltip_text = "Press, then click on the map to drop one. Esc or the right mouse button stops."
+	button.toggle_mode = true
+	button.add_theme_color_override("font_color", TriggerZone.COLOUR.lightened(0.3))
+	button.toggled.connect(_on_place_toggled.bind(TriggerZone.PLACING))
+	_place_buttons[TriggerZone.PLACING] = button
+	column.add_child(button)
+
+
 func _map() -> SmartFellasMap:
 	return EditorInterface.get_edited_scene_root() as SmartFellasMap
 
@@ -513,10 +528,11 @@ func show_map() -> void:
 	_showing = false
 	var rules := MapExporter.read_rules(map)
 	var sizes := MapExporter.team_sizes(map, rules)
-	_counts.text = "%d octopus and %d diver spawn points, %d food patches. Up to %d divers and %d octopuses.\n%d fish, %d anglerfish spots, %d jellyfish in %d groups, %d lantern schools, %d goblin route points.\n%d wrasse spots, %d stingray stops, %d eel holes, %d groper holes." % [
+	_counts.text = "%d octopus and %d diver spawn points, %d food patches. Up to %d divers and %d octopuses.\n%d fish, %d anglerfish spots, %d jellyfish in %d groups, %d lantern schools, %d goblin route points.\n%d wrasse spots, %d stingray stops, %d eel holes, %d groper holes.\nTrigger zones for the map's script: %d." % [
 		rules.octopus_spawns.size(), rules.diver_spawns.size(), rules.patches.size(), sizes["divers"], sizes["octopuses"],
 		rules.fish.size(), rules.angler_spots.size(), rules.jelly_count(), rules.jellies.size(), rules.lantern_schools.size(), rules.goblin_route.size(),
-		rules.haunts["wrasse"].size(), rules.haunts["stingrays"].size(), rules.haunts["eels"].size(), rules.haunts["gropers"].size()
+		rules.haunts["wrasse"].size(), rules.haunts["stingrays"].size(), rules.haunts["eels"].size(), rules.haunts["gropers"].size(),
+		rules.triggers.size(),
 	]
 	_problems.text = "\n".join(rules.problems)
 	_problems.visible = not rules.problems.is_empty()

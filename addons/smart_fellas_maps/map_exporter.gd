@@ -10,6 +10,7 @@ const Kit := preload("kit.gd")
 const NameLetters := preload("name_letters.gd")
 const SeabedGrid := preload("seabed_grid.gd")
 const WaterLook := preload("water/water_look.gd")
+const TriggerZone := preload("trigger_zone.gd")
 
 const KIT_FOLDER := Kit.FOLDER
 const FORMAT := 2
@@ -175,6 +176,8 @@ const SWITCH_GROUP := "switch"
 ## The game's MAX_NAMED_PIECES and MAX_NAME_LENGTH.
 const MOST_NAMED_PIECES := 256
 const MOST_PIECE_NAME_LETTERS := 64
+## The game's MAX_TRIGGERS.
+const MOST_TRIGGERS := 256
 const SPAWN_OCTOPUS := "spawn_octopus_"
 const SPAWN_DIVER := "spawn_diver_"
 const FOOD_PATCH := "food_patch_"
@@ -195,6 +198,8 @@ class Scene:
 	var goblin_route: Array[Dictionary] = []
 	## Each list of the haunts section by its name in map.ron, as {"at", "node"}.
 	var haunts := {"wrasse": [], "stingrays": [], "eels": [], "gropers": []}
+	## The trigger zones for the map's script, as {"name", "at", "reach", "node"}.
+	var triggers: Array[Dictionary] = []
 	## The map's own models, by their name in the package's assets/, as their file in this project.
 	var models := {}
 	## The pictures those models keep beside themselves, by their name in assets/, as their file here.
@@ -240,14 +245,15 @@ class Scene:
 	var warnings: Array[Dictionary] = []
 	## The node each problem is on, if it's on one.
 	var problem_nodes := {}
-	## How many pieces and markers were left out for being hidden, and the first node whose eye hid any.
-	var hidden := {"pieces": 0, "markers": 0, "first": null}
+	## How many pieces, markers and trigger zones were left out for being hidden, and the first node whose eye hid any.
+	var hidden := {"pieces": 0, "markers": 0, "zones": 0, "first": null}
 	## What the map's lists hold, in the order map.ron has them, under the words the game's checker
 	## calls them by: a node, or words for something with no node.
 	var sources := {
 		"Piece": [], "Octopus spawn": [], "Diver spawn": [], "Food patch": [], "Food spot": [], "Fish": [],
 		"Anglerfish spot": [], "Lantern fish school": [], "Jellyfish group": [], "Goblin shark route point": [],
 		"Wrasse spot": [], "Stingray stop": [], "Eel hole": [], "Groper hole": [],
+		"Trigger zone": [],
 	}
 
 	func jelly_count() -> int:
@@ -1106,6 +1112,7 @@ static func read_rules(root: SmartFellasMap) -> Scene:
 		elif team[1].size() > MOST_SPAWNS:
 			scene.problems.append("The map has %d %s spawn points. The limit is %d. Remove some." % [team[1].size(), team[0], MOST_SPAWNS])
 	_check_patches(scene)
+	_check_triggers(root, scene)
 	_check_wildlife(root, scene)
 	_check_players(root, scene)
 	_warn_of_close_spawns(root, scene)
@@ -1289,27 +1296,29 @@ static func _read_children(node: Node, scene: Scene, hider: Node = null) -> void
 		if _is_the_seabed(child):
 			if _root_of(child).has_seabed:
 				_read_seabed(child, scene)
-		elif child is Marker3D:
+		elif child is Marker3D or child.get_script() == TriggerZone:
 			if hidden:
-				scene.left_out_hidden(hidden_by, "markers")
-			else:
+				scene.left_out_hidden(hidden_by, "markers" if child is Marker3D else "zones")
+			elif child is Marker3D:
 				_read_marker(child, scene)
+			else:
+				_read_trigger(child, scene)
 		_read_children(child, scene, hidden_by)
 
 
 ## Tells the map maker how many hidden things are out of the map, so hiding a group never loses half a
 ## map without a word.
 static func _warn_of_hidden(scene: Scene) -> void:
-	var pieces: int = scene.hidden["pieces"]
-	var markers: int = scene.hidden["markers"]
-	if pieces + markers == 0:
-		return
 	var counts: Array[String] = []
-	if pieces > 0:
-		counts.append("%d piece%s" % [pieces, "" if pieces == 1 else "s"])
-	if markers > 0:
-		counts.append("%d marker%s" % [markers, "" if markers == 1 else "s"])
-	var one := pieces + markers == 1
+	var total := 0
+	for kind: Array in [["pieces", "piece"], ["markers", "marker"], ["zones", "trigger zone"]]:
+		var count: int = scene.hidden[kind[0]]
+		total += count
+		if count > 0:
+			counts.append("%d %s%s" % [count, kind[1], "" if count == 1 else "s"])
+	if total == 0:
+		return
+	var one := total == 1
 	scene.warnings.append({
 		"words": "%s %s hidden, so %s left out of the map. Show %s with the eye in the Scene panel to put %s back." % [
 			" and ".join(counts), "is" if one else "are", "it's" if one else "they're", "it" if one else "them", "it" if one else "them"
@@ -2473,19 +2482,52 @@ static func own_size_snapped(size: float) -> float:
 
 
 ## What's wrong with a piece's name for the map's script, in plain words, or nothing: the game's
-## name_problem.
-static func piece_name_problem(piece_name: String) -> String:
+## name_problem. A trigger zone's message leaves out dots, which Godot never keeps in a node's name.
+static func piece_name_problem(piece_name: String, letters := "lowercase letters, digits, dashes, underscores and dots") -> String:
 	if piece_name.length() > MOST_PIECE_NAME_LETTERS:
 		return "its name has %d letters, and the limit is %d" % [piece_name.length(), MOST_PIECE_NAME_LETTERS]
 	for letter in piece_name:
 		var plain := (letter >= "a" and letter <= "z") or (letter >= "0" and letter <= "9") or letter in ["_", "-", "."]
 		if not plain:
-			return "names may only use lowercase letters, digits, dashes, underscores and dots"
+			return "names may only use %s" % letters
 	if piece_name.contains("..") or piece_name.begins_with(".") or piece_name.ends_with("."):
 		return "names can't start or end with a dot, or have two in a row"
 	if piece_name.get_slice(".", 0) in WINDOWS_NAMES:
 		return "that name is kept for Windows itself"
 	return ""
+
+
+static func _read_trigger(zone: Node3D, scene: Scene) -> void:
+	scene.triggers.append({"name": String(zone.name), "at": zone.global_position, "reach": zone.reach_in_world(), "node": zone})
+	scene.sources["Trigger zone"].append(zone)
+
+
+## Each trigger zone is named as the game's checker wants, its own name, upright, inside the map and no
+## bigger than it, as the game's check_triggers.
+static func _check_triggers(root: SmartFellasMap, scene: Scene) -> void:
+	if scene.triggers.size() > MOST_TRIGGERS:
+		scene.problems.append("The map has %d trigger zones, and the most it can have is %d. Remove some." % [scene.triggers.size(), MOST_TRIGGERS])
+		return
+	var widest := maxf(root.half_width, root.ceiling) * 2.0
+	var seen := {}
+	for trigger in scene.triggers:
+		var zone: Node3D = trigger["node"]
+		var why := piece_name_problem(trigger["name"], "lowercase letters, digits, dashes and underscores")
+		if not why.is_empty():
+			scene.problem_on(zone, "%s is a trigger zone, so the map's script finds it by its name, but %s. Rename it." % [zone.name, why])
+		elif seen.has(trigger["name"]):
+			scene.problem_on(zone, "%s is the name of two trigger zones. Rename one." % zone.name)
+		seen[trigger["name"]] = true
+		var at: Vector3 = trigger["at"]
+		var reach: Vector3 = trigger["reach"]
+		if not (at.is_finite() and reach.is_finite()):
+			scene.problem_on(zone, "%s has a number that isn't a real number. Delete it and drop in another." % zone.name)
+		elif zone.is_turned():
+			scene.problem_on(zone, "%s is turned. The game's trigger zones stand upright, lined up with the map: set its rotation to 0 and size it with the dots on its sides." % zone.name)
+		elif absf(at.x) > root.half_width or absf(at.z) > root.half_width or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling:
+			scene.problem_on(zone, "%s has its middle at (%.1f, %.1f, %.1f), outside the map. It reaches %s m each way from the middle and %s m up." % [zone.name, at.x, at.y, at.z, root.half_width, root.ceiling])
+		elif reach.x <= 0.0 or reach.y <= 0.0 or reach.z <= 0.0 or reach.x > widest or reach.y > widest or reach.z > widest:
+			scene.problem_on(zone, "%s reaches (%.1f, %.1f, %.1f) m from its middle. It must reach more than 0 and at most %s m each way, as wide as the map: set its scale back to 1 and size it with the dots on its sides." % [zone.name, reach.x, reach.y, reach.z, widest])
 
 
 ## Each named piece's name is plain and its own, as the game's checker wants.
@@ -2753,6 +2795,13 @@ static func _xyz(at: Vector3) -> String:
 	return "(%s, %s, %s)" % [_number(at.x), _number(at.y), _number(at.z)]
 
 
+static func _trigger_lines(scene: Scene) -> String:
+	var lines := ""
+	for trigger in scene.triggers:
+		lines += "\n        (name: \"%s\", at: %s, reach: %s)," % [trigger["name"], _xyz(trigger["at"]), _xyz(trigger["reach"])]
+	return lines + ("\n    " if not lines.is_empty() else "")
+
+
 static func _spawn_lines(spawns: Array[Dictionary]) -> String:
 	var lines := ""
 	for spawn in spawns:
@@ -2935,7 +2984,7 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += "    food: (\n        growing: (1, %d),\n        patches: [\n%s        ],\n        spots: [\n%s        ],\n    ),\n" % [
 		most_growing, food["patches"], food["spots"]
 	]
-	text += "    fish: [%s],\n    triggers: [],\n    hunters: %s,\n    clownfish: %s,\n" % [_fish_lines(scene), _switch(root.hunters), _switch(root.clownfish)]
+	text += "    fish: [%s],\n    triggers: [%s],\n    hunters: %s,\n    clownfish: %s,\n" % [_fish_lines(scene), _trigger_lines(scene), _switch(root.hunters), _switch(root.clownfish)]
 	text += "    players: (fewest: %d, most: %d, max_divers: %d, max_octopuses: %d),\n" % [root.fewest_players, divers + octopuses, divers, octopuses]
 	text += "    far_side: 0.0,\n"
 	var widest: float = root.half_width * 0.6

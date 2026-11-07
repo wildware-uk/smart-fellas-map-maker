@@ -18,6 +18,7 @@ const SeabedTool := preload("seabed_tool.gd")
 const PaintPanel := preload("paint_panel.gd")
 const PlayAreaGizmos := preload("play_area_gizmos.gd")
 const ZoneGizmos := preload("zone_gizmos.gd")
+const TriggerGizmos := preload("trigger_gizmos.gd")
 const PieceDrop := preload("piece_drop.gd")
 const PiecesPanel := preload("pieces_panel.gd")
 const TestResults := preload("test_results.gd")
@@ -60,6 +61,7 @@ var _markers: MarkerTool
 var _marker_gizmos: EditorNode3DGizmoPlugin
 var _play_area: PlayAreaGizmos
 var _zone_gizmos: ZoneGizmos
+var _trigger_gizmos: TriggerGizmos
 var _sculptor: SeabedTool
 var _cost_bar: Control
 var _tool: BrushTool
@@ -141,6 +143,9 @@ func _enter_tree() -> void:
 	_zone_gizmos = ZoneGizmos.new()
 	_zone_gizmos.undo = get_undo_redo()
 	add_node_3d_gizmo_plugin(_zone_gizmos)
+	_trigger_gizmos = TriggerGizmos.new()
+	_trigger_gizmos.undo = get_undo_redo()
+	add_node_3d_gizmo_plugin(_trigger_gizmos)
 	_map_panel.show_play_area_shown(_play_area.shown)
 	_map_panel.play_area_toggled.connect(_on_play_area_toggled)
 	_pieces_panel = PiecesPanel.new()
@@ -193,6 +198,7 @@ func _exit_tree() -> void:
 	remove_node_3d_gizmo_plugin(_marker_gizmos)
 	remove_node_3d_gizmo_plugin(_play_area)
 	remove_node_3d_gizmo_plugin(_zone_gizmos)
+	remove_node_3d_gizmo_plugin(_trigger_gizmos)
 	remove_dock(_pieces_dock)
 	_pieces_dock.queue_free()
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_BOTTOM, _cost_bar)

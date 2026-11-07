@@ -1,13 +1,14 @@
 @tool
 extends RefCounted
-## Drops markers on the map, and Populate's zones: after a button in the Map panel, a click in the 3D view
-## puts one on the surface under the mouse. A click, or a drag that scatters fish, is one step of undo. Esc
-## or the right mouse button stops, and so does dropping a zone.
+## Drops markers on the map, Populate's zones and trigger zones: after a button in the Map panel, a click in
+## the 3D view puts one on the surface under the mouse. A click, or a drag that scatters fish, is one step of
+## undo. Esc or the right mouse button stops, and so does dropping a zone.
 
 const Brush := preload("brush.gd")
 const BrushTool := preload("brush_tool.gd")
 const MarkerKinds := preload("marker_kinds.gd")
 const Zone := preload("populate_zone.gd")
+const TriggerZone := preload("trigger_zone.gd")
 
 signal view_changed
 signal said(words: String)
@@ -24,7 +25,8 @@ var history: Object
 ## Asks where the mouse lands, as (camera, mouse) -> what SurfaceFinder.find gives.
 var surface_under: Callable
 var map: SmartFellasMap
-## The kind of marker being dropped, Zone.placing of a zone's, or "" while this tool is off.
+## The kind of marker being dropped, Zone.placing of a zone's, TriggerZone.PLACING, or "" while this tool
+## is off.
 var kind := ""
 
 var _hover := {}
@@ -66,7 +68,7 @@ func handle_input(camera: Camera3D, event: InputEvent) -> bool:
 	if event is InputEventMouseMotion:
 		_hover = surface_under.call(camera, event.position)
 		view_changed.emit()
-		var apart: float = 0.0 if _zone_kind() >= 0 else MarkerKinds.KINDS[kind].get("paint_apart", 0.0)
+		var apart: float = 0.0 if _drops_zone() else MarkerKinds.KINDS[kind].get("paint_apart", 0.0)
 		# The button may have come up over another panel, where this never heard of it.
 		if _dragging and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
 			_end_drag()
@@ -83,7 +85,7 @@ func handle_input(camera: Camera3D, event: InputEvent) -> bool:
 			if event.pressed:
 				_dragging = true
 				_drop_at(surface_under.call(camera, event.position))
-				if _zone_kind() >= 0 and not _dropped.is_empty():
+				if _drops_zone() and not _dropped.is_empty():
 					var zone := _dropped[0]
 					stop()
 					zone_dropped.emit(zone)
@@ -103,24 +105,39 @@ func _drop_at(hit: Dictionary) -> void:
 		said.emit("That's outside the map. It reaches %s m each way from the middle." % map.half_width)
 		return
 	_last_dropped_at = at
-	var dropped: Node3D = Zone.new_zone(map, _zone_kind(), map.global_transform.affine_inverse() * at) if _zone_kind() >= 0 else MarkerKinds.new_marker(map, kind, at, hit["normal"])
+	var dropped: Node3D
+	if kind == TriggerZone.PLACING:
+		dropped = TriggerZone.new_zone(map.global_transform.affine_inverse() * at)
+	elif _zone_kind() >= 0:
+		dropped = Zone.new_zone(map, _zone_kind(), map.global_transform.affine_inverse() * at)
+	else:
+		dropped = MarkerKinds.new_marker(map, kind, at, hit["normal"])
 	map.add_child(dropped, true)
 	dropped.owner = map
 	_dropped.append(dropped)
 	map.notify_pieces_changed()
 
 
-## The kind of zone being dropped, or -1 for a marker.
+## The kind of Populate zone being dropped, or -1 for anything else.
 func _zone_kind() -> int:
 	return Zone.kind_placed(kind)
 
 
+## Whether what's being dropped is a zone, of Populate's or a trigger zone, which goes one at a time.
+func _drops_zone() -> bool:
+	return kind == TriggerZone.PLACING or _zone_kind() >= 0
+
+
 ## What a person calls what's being dropped, and the colour it's shown in.
 func _words() -> String:
+	if kind == TriggerZone.PLACING:
+		return TriggerZone.WORDS
 	return Zone.KINDS[_zone_kind()]["words"] if _zone_kind() >= 0 else MarkerKinds.KINDS[kind]["words"]
 
 
 func _colour() -> Color:
+	if kind == TriggerZone.PLACING:
+		return TriggerZone.COLOUR
 	return Zone.KINDS[_zone_kind()]["colour"] if _zone_kind() >= 0 else MarkerKinds.KINDS[kind]["colour"]
 
 
@@ -179,16 +196,22 @@ func _draw_markers(overlay: Control, camera: Camera3D) -> void:
 			overlay.draw_circle(camera.unproject_position(marker.global_position), DOT_RADIUS, MarkerKinds.KINDS[kind_here]["colour"])
 
 
-## What each of Populate's zones is, written at its middle, so that the discs can be told apart.
+## What each of Populate's zones is, and each trigger zone's name for the map's script, written at its
+## middle, so that they can be told apart.
 func _draw_zones(overlay: Control, camera: Camera3D) -> void:
 	for zone in Zone.nodes_in(map):
-		if camera.is_position_behind(zone.global_position):
-			continue
-		var words: String = Zone.KINDS[zone.kind]["words"]
-		var font := ThemeDB.fallback_font
-		var middle := camera.unproject_position(zone.global_position) - font.get_string_size(words, HORIZONTAL_ALIGNMENT_LEFT, -1.0, ZONE_WORDS_SIZE) * 0.5
-		overlay.draw_string_outline(font, middle, words, HORIZONTAL_ALIGNMENT_LEFT, -1.0, ZONE_WORDS_SIZE, 4, Color.BLACK)
-		overlay.draw_string(font, middle, words, HORIZONTAL_ALIGNMENT_LEFT, -1.0, ZONE_WORDS_SIZE, Zone.KINDS[zone.kind]["colour"])
+		_draw_words_at(overlay, camera, zone.global_position, Zone.KINDS[zone.kind]["words"], Zone.KINDS[zone.kind]["colour"])
+	for zone in TriggerZone.nodes_in(map):
+		_draw_words_at(overlay, camera, zone.global_position, String(zone.name), TriggerZone.COLOUR)
+
+
+func _draw_words_at(overlay: Control, camera: Camera3D, at: Vector3, words: String, colour: Color) -> void:
+	if camera.is_position_behind(at):
+		return
+	var font := ThemeDB.fallback_font
+	var middle := camera.unproject_position(at) - font.get_string_size(words, HORIZONTAL_ALIGNMENT_LEFT, -1.0, ZONE_WORDS_SIZE) * 0.5
+	overlay.draw_string_outline(font, middle, words, HORIZONTAL_ALIGNMENT_LEFT, -1.0, ZONE_WORDS_SIZE, 4, Color.BLACK)
+	overlay.draw_string(font, middle, words, HORIZONTAL_ALIGNMENT_LEFT, -1.0, ZONE_WORDS_SIZE, colour)
 
 
 ## The goblin shark's loop, point to point and back to the first, in the order of their numbers.

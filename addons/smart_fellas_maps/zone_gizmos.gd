@@ -16,14 +16,14 @@ var undo: EditorUndoRedoManager
 func _init() -> void:
 	for kind: Zone.Kind in Zone.KINDS:
 		var colour: Color = Zone.KINDS[kind]["colour"]
-		add_material("disc %d" % kind, _material(Color(colour, DISC_ALPHA)))
-		add_material("rim %d" % kind, _material(colour))
+		add_material("disc %d" % kind, overlay_material(Color(colour, DISC_ALPHA)))
+		add_material("rim %d" % kind, overlay_material(colour))
 	create_handle_material("handles")
 
 
 ## Unshaded and drawn over everything: the water's own screen pass draws over anything see-through that
 ## tests depth.
-static func _material(colour: Color) -> StandardMaterial3D:
+static func overlay_material(colour: Color) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if colour.a < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
@@ -55,10 +55,10 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 		var next := _on_rim(radius, step + 1)
 		rim.append_array([here, next])
 		disc.append_array([Vector3.ZERO, here, next])
-	gizmo.add_mesh(_mesh_of(disc), get_material("disc %d" % zone.kind, gizmo))
+	gizmo.add_mesh(mesh_of(disc), get_material("disc %d" % zone.kind, gizmo))
 	gizmo.add_lines(rim, get_material("rim %d" % zone.kind, gizmo))
 	gizmo.add_collision_segments(rim)
-	gizmo.add_collision_triangles(_triangles_of(disc))
+	gizmo.add_collision_triangles(triangles_of(disc))
 	gizmo.add_handles(PackedVector3Array([Vector3(radius, 0.0, 0.0)]), get_material("handles", gizmo), [])
 
 
@@ -67,7 +67,7 @@ static func _on_rim(radius: float, step: int) -> Vector3:
 	return Vector3(cos(angle), 0.0, sin(angle)) * radius
 
 
-static func _mesh_of(points: PackedVector3Array) -> ArrayMesh:
+static func mesh_of(points: PackedVector3Array) -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = points
@@ -76,7 +76,7 @@ static func _mesh_of(points: PackedVector3Array) -> ArrayMesh:
 	return mesh
 
 
-static func _triangles_of(points: PackedVector3Array) -> TriangleMesh:
+static func triangles_of(points: PackedVector3Array) -> TriangleMesh:
 	var triangles := TriangleMesh.new()
 	triangles.create_from_faces(points)
 	return triangles
