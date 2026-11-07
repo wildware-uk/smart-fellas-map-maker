@@ -1410,9 +1410,11 @@ static func _check_in_the_map(marker: Marker3D, root: SmartFellasMap, scene: Sce
 ## .glb the game takes. Nothing is left out without a word.
 static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 	var names_of := {}
+	var first_in_place := {}
 	for found in own_model_pieces(root):
 		var node: Node3D = found["node"]
 		var path: String = found["path"]
+		_warn_of_twin(node, found, first_in_place, scene)
 		if not names_of.has(path) and found.has("alone") and _too_wide(node):
 			var parts := _cut_wide_mesh(node, scene)
 			if parts > 0:
@@ -1481,6 +1483,22 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 		# GPU and CPU particles are one line, as are CSG boxes and spheres.
 		var kind := "particles" if what.contains("Particles") else "CSG" if what.begins_with("CSG") else what
 		scene.warning_among(node, kind, words[0], words[1])
+
+
+## Says so if `node`, a model of the map's own as own_model_pieces finds it, is the same mesh or model as one
+## found before in the same place, which `first_in_place` keeps by mesh and place: the two flicker through
+## each other in the game.
+static func _warn_of_twin(node: Node3D, found: Dictionary, first_in_place: Dictionary, scene: Scene) -> void:
+	var made_of: String = found["path"]
+	if found.has("alone"):
+		var mesh: Mesh = (node as MeshInstance3D).mesh
+		made_of = mesh.resource_path if not mesh.resource_path.is_empty() else "mesh %d" % mesh.get_instance_id()
+	var key := "%s at %s" % [made_of, node.global_transform]
+	if not first_in_place.has(key):
+		first_in_place[key] = node
+		return
+	var first: Node = first_in_place[key]
+	scene.warning_among(node, "twins", "%s is the same mesh as %s in the same place, so the two flicker through each other in the game. Delete one." % [node.name, first.name], "%d meshes are the same mesh as another in the same place, so they flicker through each other in the game. Delete one of each.", "%s, the same as %s" % [node.name, first.name])
 
 
 ## What Export says of `node`, of the class `what`, which it leaves out: as [words for it alone, words with
@@ -1903,6 +1921,17 @@ static func _undress(part: MeshInstance3D, side: int) -> bool:
 	return any
 
 
+## What `part` wears on `surface` in the game: what Godot draws there, unless that's a material the game can't
+## read, such as the editor's underwater preview, when it's what's beneath.
+static func _material_worn(part: MeshInstance3D, surface: int) -> Material:
+	if part.material_override is BaseMaterial3D:
+		return part.material_override
+	var over := part.get_surface_override_material(surface)
+	if over is BaseMaterial3D:
+		return over
+	return part.mesh.surface_get_material(surface)
+
+
 ## Joins the surfaces of `part`'s mesh that are drawn with the same material into one, as one draw: the
 ## game reads at most MOST_PRIMITIVES surfaces in a mesh, and a mesh imported from another game can have many
 ## surfaces of a few materials. Only meshes of triangles are joined.
@@ -2100,7 +2129,7 @@ static func _cut_wide_mesh(node: MeshInstance3D, scene: Scene) -> int:
 		var middle := (low + high) / 2.0
 		for surface: int in parts[key]:
 			cut.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _cut_arrays(lists[surface], parts[key][surface], place, turn, middle))
-			cut.surface_set_material(cut.get_surface_count() - 1, node.get_active_material(surface))
+			cut.surface_set_material(cut.get_surface_count() - 1, _material_worn(node, surface))
 		var holder := MeshInstance3D.new()
 		holder.mesh = cut
 		var bytes := built_glb(holder, true, scene.picture_side, scene.changes)
@@ -2180,7 +2209,7 @@ static func split_glbs(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, ch
 	var groups: Array[Dictionary] = []
 	for part in meshes_in(copy):
 		for surface in part.mesh.get_surface_count():
-			var material := part.get_active_material(surface)
+			var material := _material_worn(part, surface)
 			var id := material.get_instance_id() if material != null else 0
 			var into: Dictionary = {}
 			for group in groups:
@@ -2216,7 +2245,7 @@ static func split_glbs(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, ch
 				by_part[part] = piece
 			var mesh: ArrayMesh = by_part[part].mesh
 			mesh.add_surface_from_arrays(part.mesh.surface_get_primitive_type(entry[1]), part.mesh.surface_get_arrays(entry[1]))
-			mesh.surface_set_material(mesh.get_surface_count() - 1, part.get_active_material(entry[1]))
+			mesh.surface_set_material(mesh.get_surface_count() - 1, _material_worn(part, entry[1]))
 		var bytes := built_glb(holder, false, side, changes)
 		holder.free()
 		if bytes.is_empty():

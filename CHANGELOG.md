@@ -2,6 +2,11 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-437d962
+
+- Fixed Export and Test Map making big and many-material meshes plain white, flickering through the textures beside them.
+- Export now warns when two copies of one mesh stand in exactly the same place.
+
 ## 2026.11.07-73e6cf0
 
 - Small fixes and tidying.
