@@ -114,6 +114,16 @@ type Fate = "out" | "held" | "respawn" | "turn";
  */
 type Goal = "own" | "hide" | "flee" | "roam" | "hunt" | "goTo";
 
+/**
+ * One of the game's own lines for why a round ended, for game.endRound():
+ * - "allCaught": every octopus was caught (speared, netted, starved or eaten);
+ * - "allTurned": every octopus was caught and turned into a diver;
+ * - "timeUp": time ran out and the octopuses survived;
+ * - "diversLeft": every diver left;
+ * - "octopusesLeft": every octopus left.
+ */
+type EndWhy = "allCaught" | "allTurned" | "timeUp" | "diversLeft" | "octopusesLeft";
+
 /** The value of one of a game mode's lobby settings: a number, a choice's name, or a toggle. */
 type SettingValue = number | string | boolean;
 
@@ -280,9 +290,12 @@ interface Game {
   random(): number;
   /**
    * Ends the round, with `winner` the team that won it, or one player (where everyone plays for
-   * themselves, in a game mode), or "draw" for nobody.
+   * themselves, in a game mode), or "draw" for nobody. The results say why with the game's own line
+   * named by `why`, or else that the map (or the game mode) decided. `why` must fit the winning
+   * team: "allCaught", "allTurned" and "octopusesLeft" are the divers' wins, "timeUp" and
+   * "diversLeft" the octopuses'.
    */
-  endRound(winner: Team | Player | "draw"): void;
+  endRound(winner: Team | Player | "draw", why?: EndWhy): void;
   /** Adds time to the round, or takes it away with a negative number: -3600 to 3600 seconds. */
   addTime(seconds: number): void;
 
@@ -343,7 +356,10 @@ interface Game {
    * team's cap in the lobby, the map and the mode's maxPlayers have room for (for game modes).
    */
   setBots(team: Team, count: number): void;
-  /** What being caught or killed does to a team's players, with the wait for "respawn" and "turn": 0 to 600 seconds (for game modes). */
+  /**
+   * What being caught or killed does to a team's players, with the wait for "respawn" and "turn": 0
+   * to 600 seconds, or the lobby's respawn time when left out (for game modes).
+   */
   setFate(team: Team, fate: Fate, seconds?: number): void;
   /** Where a team's players come back, at a point within 1000 m of the map's middle (for game modes). */
   setSpawn(team: Team, x: number, y: number, z: number): void;
