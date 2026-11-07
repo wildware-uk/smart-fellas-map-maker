@@ -5,6 +5,7 @@ extends RefCounted
 
 const GameFinder := preload("game_finder.gd")
 const MapExporter := preload("map_exporter.gd")
+const Version := preload("version.gd")
 
 ## The bots a test game starts with, octopuses then divers. The game keeps to the map's team sizes.
 const BOTS := "2,2"
@@ -21,6 +22,9 @@ const PROBLEMS_EXIT := 1
 const PROBLEM_MARK := "map problem: "
 ## What marks the line where the game says which folder its maps are in.
 const MAPS_FOLDER_MARK := "maps folder: "
+## What marks the line where the game says which map maker version it is at. A game from before it said
+## one says nothing.
+const GAME_VERSION_MARK := "map maker version: "
 ## What marks each line where the game says what is wrong with one of the map's scripts.
 const SCRIPT_PROBLEM_MARK := "script problem: "
 ## The types file Export keeps in a map's scripts folder, so the map maker's editor completes and checks
@@ -40,7 +44,7 @@ const NAMED_THINGS := [
 ]
 
 
-enum State { EXPORT_REFUSED, NO_GAME, NO_MAPS_FOLDER, CANT_CHECK, PROBLEMS, FINE }
+enum State { EXPORT_REFUSED, NO_GAME, NO_MAPS_FOLDER, CANT_CHECK, OLD_GAME, PROBLEMS, FINE }
 
 
 ## What to run to check the package in `folder`.
@@ -160,18 +164,20 @@ static func build_scripts(game: String, folder: String, map_name: String, tree: 
 
 ## What the game's answer to building scripts means: 0 is built, 1 with marked lines is problems with the
 ## scripts, and anything else is the game not getting as far as them.
+## Either answer has "older" too if the game is older than the add-on.
 static func read_build_answer(code: int, said: String, game: String, out: String) -> Dictionary:
+	var older := is_older(said)
 	if code == 0:
-		return {"built": out}
+		return _noting_older({"built": out}, older)
 	var problems: Array[String] = []
 	var others: Array[String] = []
 	for line in _lines_of(said):
 		if line.begins_with(SCRIPT_PROBLEM_MARK):
 			problems.append(line.trim_prefix(SCRIPT_PROBLEM_MARK))
-		else:
+		elif not line.begins_with(GAME_VERSION_MARK):
 			others.append(line)
 	if code == PROBLEMS_EXIT and not problems.is_empty():
-		return {"problems": problems}
+		return _noting_older({"problems": problems}, older)
 	var words := "The game at %s stopped with error %d before it could build the map's scripts." % [game, code]
 	if others.is_empty():
 		return {"failed": words + " Try opening it by itself."}
@@ -237,23 +243,58 @@ static func export_into_game(root: Node, chosen_game: String, chosen_maps: Strin
 
 
 ## What the game's answer means: 0 is fine whatever it printed, 1 with marked lines is problems with the
-## map, and anything else is the game not getting as far as the map.
+## map, and anything else is the game not getting as far as the map. Either of the first two has "older"
+## too if the game is older than the add-on, as its problems may be ones a newer game has done away with.
 static func read_answer(code: int, said: String, game: String) -> Dictionary:
 	var problems: Array[String] = []
+	var older := is_older(said)
 	if code == 0:
-		return {"problems": problems}
+		return _noting_older({"problems": problems}, older)
 	var others: Array[String] = []
 	for line in _lines_of(said):
 		if line.begins_with(PROBLEM_MARK):
 			problems.append(line.trim_prefix(PROBLEM_MARK))
-		else:
+		elif not line.begins_with(GAME_VERSION_MARK):
 			others.append(line)
 	if code == PROBLEMS_EXIT and not problems.is_empty():
-		return {"problems": problems}
+		return _noting_older({"problems": problems}, older)
 	var words := "The game at %s stopped with error %d before it could check the map." % [game, code]
 	if others.is_empty():
 		return {"failed": words + " Try opening it by itself."}
 	return {"failed": "%s It said:\n%s" % [words, "\n".join(others)]}
+
+
+## Whether what the game said shows it older than this add-on: a map maker version below what the add-on
+## needs, or none, as a game from before it said one.
+static func is_older(said: String) -> bool:
+	for line in _lines_of(said):
+		if line.begins_with(GAME_VERSION_MARK):
+			var number := line.trim_prefix(GAME_VERSION_MARK)
+			return not number.is_valid_int() or number.to_int() < Version.GAME_NEEDS
+	return true
+
+
+## What to tell a map maker whose game is older than the add-on and found fault with `what`, before
+## anything that game said.
+static func older_words(game: String, what: String) -> String:
+	return "Your Smart Fellas is older than this map maker, so it can't %s properly. Update the game in Steam (if you play the beta, on the beta branch), then try again.\n\n(The game is at %s.)" % [what, game]
+
+
+## Said first beside a map an older game took: it still opens, but the map maker should update it.
+static func older_but_took_it(game: String) -> Dictionary:
+	return {"words": "Your Smart Fellas is older than this map maker. It took this map, but update the game in Steam (if you play the beta, on the beta branch) so it knows everything the map maker does. (The game is at %s.)" % game, "node": null}
+
+
+## What an older game said was wrong, put away behind Details, as the newer game may not say it.
+static func _said_by_older(problems: Array, about: String) -> Dictionary:
+	var count := "1 problem" if problems.size() == 1 else "%d problems" % problems.size()
+	return {"words": "The older game also listed %s with %s, which an up-to-date game may not:" % [count, about], "node": null, "details": problems}
+
+
+static func _noting_older(answer: Dictionary, older: bool) -> Dictionary:
+	if older:
+		answer["older"] = true
+	return answer
 
 
 static func _read_what_waits(pipe: FileAccess) -> String:
@@ -287,7 +328,8 @@ static func source_of(problem: String, sources: Dictionary) -> Variant:
 
 ## What the buttons do up to the game opening: exports the map under `root`, finds the game and checks
 ## the map with it. Gives back what came of it in plain words:
-## - "state": EXPORT_REFUSED, NO_GAME, CANT_CHECK, PROBLEMS or FINE;
+## - "state": EXPORT_REFUSED, NO_GAME, CANT_CHECK, OLD_GAME (the game is older than the add-on and found
+##   fault, which can't be trusted), PROBLEMS or FINE (an older game that took it adds a line first);
 ## - "folder": the .sfm the map went into, and "game": what was found, once they're known;
 ## - "words": what to tell the map maker first;
 ## - "lines": each problem or warning, as {"words", "node"}, with the node it's on if it's on one, and
@@ -303,6 +345,8 @@ static func export_and_check(root: Node, out_folder: String, chosen_game: String
 		var built := await build_scripts(builder, scripts_folder, root.map_name, tree)
 		if built.has("failed"):
 			return {"state": State.CANT_CHECK, "game": builder, "words": built["failed"], "lines": []}
+		if built.has("problems") and built.has("older"):
+			return {"state": State.OLD_GAME, "game": builder, "words": "%s\n\nSo the map hasn't been exported." % older_words(builder, "build this map's scripts"), "lines": [_said_by_older(built["problems"], "the map's scripts")]}
 		if built.has("problems"):
 			var problems: Array[Dictionary] = []
 			for words: String in built["problems"]:
@@ -333,6 +377,13 @@ static func export_and_check(root: Node, out_folder: String, chosen_game: String
 	if checked.has("failed"):
 		return {"state": State.CANT_CHECK, "folder": folder, "game": game, "words": "%s\n\n%s" % [went, checked["failed"]], "lines": lines}
 	var problems: Array[String] = checked["problems"]
+	if checked.has("older") and not problems.is_empty():
+		var heard: Array[Dictionary] = [_said_by_older(problems, "the map")]
+		heard.append_array(lines)
+		return {"state": State.OLD_GAME, "folder": folder, "game": game, "words": "%s\n\n%s" % [older_words(game, "check this map"), went], "lines": heard}
+	if checked.has("older"):
+		# A map the older game takes still opens in it, to try what it can.
+		lines.push_front(older_but_took_it(game))
 	if problems.is_empty():
 		var fine := "%s\n\nThe game's checker found nothing wrong." % went
 		if not lines.is_empty():

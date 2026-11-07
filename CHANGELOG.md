@@ -2,6 +2,10 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-c1ec15c
+
+- Test Map now says plainly when your Smart Fellas is older than the map maker, and asks you to update it, instead of showing the old game's complaints as problems with your map.
+
 ## 2026.11.07-244f19c
 
 - Small fixes and tidying.

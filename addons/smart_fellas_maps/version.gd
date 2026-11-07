@@ -6,6 +6,9 @@ extends RefCounted
 const PLUGIN_CFG := "res://addons/smart_fellas_maps/plugin.cfg"
 const RELEASES_URL := "https://github.com/wildware-uk/smart-fellas-map-maker/releases"
 const UNKNOWN := "unknown"
+## The map maker version the game must say, at least, for this add-on: what it can take from the add-on.
+## The game's MAP_MAKER_VERSION in src/map/check.rs; raise the two together.
+const GAME_NEEDS := 1
 
 
 static func number() -> String:
