@@ -33,21 +33,28 @@ const GLB_JSON := 0x4E4F534A
 const GLB_BIN := 0x004E4942
 ## What Export says when a file it made itself would be refused by the game, with the file and why.
 const OUR_BAD_FILE := "Export made a bad file, %s: %s That's our mistake, not yours. Please report it to us, and say which map."
-const MOST_MODELS := 1024
+const MOST_MODELS := 4096
 ## The game's MAX_ENTRIES: the most files and folders a map's package may hold.
-const MOST_ENTRIES := 1024
+const MOST_ENTRIES := 8192
 ## The game's limits on one model, from src/map/model.rs.
-const MOST_MODEL_TRIANGLES := 30000
-const MOST_MODEL_CORNERS := 60000
+const MOST_MODEL_TRIANGLES := 150000
+const MOST_MODEL_CORNERS := 300000
 const MOST_MODEL_MATERIALS := 8
 const MOST_MODEL_PICTURES := 8
 ## The game's MAX_PRIMITIVES: the most surfaces one mesh of a model may have.
 const MOST_PRIMITIVES := 16
 const MOST_PICTURE_SIDE := 2048
+## What Export says of pieces left out for standing too far outside the map, some of which may be further
+## out than even the biggest map reaches.
+const FIT_KEEPS_ALL_IT_CAN := "Press Fit to map in the Map panel to keep all it can."
 ## The game's MAX_MODEL_REACH: how far from its own middle a model may reach, in metres.
-const MOST_MODEL_REACH := 100.0
-## How wide Export cuts the parts of a mesh too wide for one model, at most, so that a part with the odd
-## triangle sticking out of it still fits the game's reach.
+const MOST_MODEL_REACH := 500.0
+## How far from its middle a mesh on its own may reach before Export cuts it into parts by place, as one
+## imported from a whole level is: so the game can leave out drawing the parts out of view, and a model
+## stands at the middle of what it draws.
+const CUT_REACH := 100.0
+## How wide Export cuts the parts of such a mesh, at most, so that a part with the odd triangle sticking
+## out of it is still well within CUT_REACH.
 const WIDEST_CUT := 160.0
 const MOST_PICTURE_BYTES := 8388608
 ## How many pixels across the game draws a model's picture at most, so a bigger one is made this size,
@@ -63,12 +70,18 @@ const CORNER_COLOURS_EXTRA := "smart_fellas_vertex_colour"
 const SMALLEST_PICTURE_SIDE := 256
 ## The game's limits on all the map's own models together, from src/map/check.rs. Materials that look the
 ## same count once, and so does a picture many models share.
-const MOST_MAP_MATERIALS := 400
-const MOST_MAP_TRIANGLES := 2000000
-const MOST_MAP_CORNERS := 2000000
+const MOST_MAP_MATERIALS := 1536
+const MOST_MAP_TRIANGLES := 4000000
+const MOST_MAP_CORNERS := 4000000
 const MOST_MAP_PICTURE_BYTES := 268435456
 ## The game's MAX_PLACED_MODEL_TRIANGLES: the most all the pieces made of the map's own models may draw.
-const MOST_PLACED_TRIANGLES := 4000000
+const MOST_PLACED_TRIANGLES := 16000000
+## The game's MAX_SCALED_MODEL_TRIANGLES: the most those pieces at a size other than their model's own may
+## draw, as each keeps a copy of its model's shape for bumping into.
+const MOST_SCALED_TRIANGLES := 4000000
+## How near its own size a piece is taken as not resized at all: a tenth of a millimetre in a metre, too
+## little to see, and well over what turning it rounds to.
+const NOT_RESIZED := 0.0001
 ## The game's MAX_MAP_PICTURE_PIXELS: the most pixels the map's own pictures may hold between them, each
 ## different one once, as the game draws them, no more than PICTURE_SIDE_DRAWN across.
 const MOST_PICTURE_PIXELS := 100000000
@@ -76,7 +89,7 @@ const MOST_PICTURE_PIXELS := 100000000
 ## that wants to reach it with a few small pictures.
 static var picture_pixels_taken := MOST_PICTURE_PIXELS
 ## The game's MAX_PIECES: the most pieces a map may place, of the kit and of its own models together.
-const MOST_ALL_PIECES := 12000
+const MOST_ALL_PIECES := 20000
 ## How many problems of one kind are each said; more than this are said as one line, with the rest behind
 ## its Details button.
 const FEW_TO_LIST := 3
@@ -137,7 +150,7 @@ const JELLY_HUES := ["Teal", "Blue", "Pink"]
 ## however the package was made.
 const MOST_PIECES := 4096
 ## The game's MAX_MAP_FILE_BYTES: the most map.ron may weigh.
-const MOST_FILE_BYTES := 2097152
+const MOST_FILE_BYTES := 8388608
 ## How unequal a piece's sides may be scaled before it counts as stretched.
 const STRETCH_SLACK := 0.0001
 ## The game takes food and fish under the ground, but nobody would ever find them there. A marker dropped
@@ -730,7 +743,7 @@ static func plain_picture_name(name: String) -> bool:
 static func _read_model_pictures(node: Node, source: String, bytes: PackedByteArray, scene: Scene) -> bool:
 	for picture in model_pictures_beside(bytes):
 		if not plain_picture_name(picture):
-			scene.problem_on(node, "%s's model %s uses the picture %s. The game takes only a .png with a plain lowercase name beside the model. Pack its pictures into the .glb when you export it from Blender." % [node.name, source.get_file(), picture])
+			scene.problem_on(node, "%s's model %s uses the picture %s. The game takes only a .png with a plain lowercase name beside the model, or pictures packed inside the .glb. Rename the picture, or save the model again with its pictures packed in." % [node.name, source.get_file(), picture])
 			return false
 		var beside := source.get_base_dir().path_join(picture)
 		if not FileAccess.file_exists(beside):
@@ -753,7 +766,7 @@ static func model_file_problem(bytes: PackedByteArray, built: bool, name: String
 		return ""
 	if built:
 		return OUR_BAD_FILE % ["%s/%s" % [ASSETS_FOLDER, name], bad]
-	return "The game can't read the model %s: %s Export it again from Blender as glTF Binary (.glb)." % [source, bad]
+	return "The game can't read the model %s: %s Save it again as glTF Binary (.glb) from the program that made it." % [source, bad]
 
 
 ## What the game's checker would refuse in how a .glb's parts are laid out, as `split_glb` in the game's
@@ -1498,7 +1511,7 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 					scene.problem_on(node, "%s's model %s can't be read." % [node.name, path])
 					continue
 				if glb_description(bytes).is_empty():
-					scene.problem_on(node, "%s's model %s isn't a .glb the game can read. Export it again from Blender as glTF Binary (.glb)." % [node.name, path.get_file()])
+					scene.problem_on(node, "%s's model %s isn't a .glb the game can read. Save it again as glTF Binary (.glb) from the program that made it." % [node.name, path.get_file()])
 					continue
 				# Pictures the game won't take, such as JPEG, as models from Sketchfab often have, or ones
 				# bigger than it draws, are made into ones it will.
@@ -1518,7 +1531,7 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 				var split := split_glbs(node, alone, scene.picture_side, scene.changes)
 				var made: Array[PackedByteArray] = split["glbs"]
 				if made.is_empty():
-					scene.problem_on(node, "%s can't be made into a model for the game. Export it from Blender as glTF Binary (.glb), copy that into this project, and drag it in instead." % node.name)
+					scene.problem_on(node, "%s can't be made into a model for the game. Save it as glTF Binary (.glb) from the program that made it, copy that into this project, and drag it in instead." % node.name)
 					continue
 				if made.size() > 1:
 					scene.changes["split"] += 1
@@ -1725,13 +1738,13 @@ static func _seen_through(material: Dictionary) -> Variant:
 static func _check_model_totals(scene: Scene) -> void:
 	var totals: Dictionary = scene.model_totals
 	if scene.models.size() > MOST_MODELS:
-		scene.problems.append("The map uses %d models of its own. The most is %d. Remove some, or use one model in more places." % [scene.models.size(), MOST_MODELS])
+		scene.problems.append("The map uses %d models of its own, and the game takes %d. Remove some, or use one model in more places." % [scene.models.size(), MOST_MODELS])
 	# map.ron, the assets/ folder, the models and the pictures beside them.
 	var files: int = 2 + scene.models.size() + scene.picture_weights.size()
 	if files > MOST_ENTRIES:
-		scene.problems.append("The map's package would hold %d files, and the game takes %d. Use fewer models of your own, or share pictures between them." % [files, MOST_ENTRIES])
+		scene.problems.append("The map's package would hold %d files, and the game takes %d. Remove some models of your own." % [files, MOST_ENTRIES])
 	if scene.looks.size() > MOST_MAP_MATERIALS:
-		scene.problems.append("The map's own models use %d different materials between them, and the game takes %d. Share materials between models, or remove some." % [scene.looks.size(), MOST_MAP_MATERIALS])
+		scene.problems.append("The map's own models use %d different materials between them, and the game takes %d. Remove some models of your own." % [scene.looks.size(), MOST_MAP_MATERIALS])
 	if totals["triangles"] > MOST_MAP_TRIANGLES:
 		scene.problems.append("The map's own models have %d triangles between them, and the game takes %d. Simplify them." % [totals["triangles"], MOST_MAP_TRIANGLES])
 	if totals["corners"] > MOST_MAP_CORNERS:
@@ -1751,6 +1764,12 @@ static func _check_placed_triangles(scene: Scene) -> void:
 			var triangles: int = scene.model_triangles.get(piece["model"], 0)
 			drawn += triangles
 			by_model[piece["model"]] = by_model.get(piece["model"], 0) + triangles
+	var resized := 0
+	for piece in scene.pieces:
+		if piece.has("model") and float(piece["scale"]) != 1.0:
+			resized += scene.model_triangles.get(piece["model"], 0)
+	if resized > MOST_SCALED_TRIANGLES:
+		scene.problems.append("The map's own models placed at a size other than their own come to %d triangles, and the game takes %d: each keeps a copy of its model's shape for bumping into. Place fewer of them at other sizes." % [resized, MOST_SCALED_TRIANGLES])
 	if drawn <= MOST_PLACED_TRIANGLES:
 		return
 	var most: String = by_model.keys()[0]
@@ -1883,15 +1902,15 @@ static func _many_models_over(too_much: String) -> String:
 ## full stop, or nothing.
 static func _model_limits_problem(tally: Dictionary) -> String:
 	if tally["triangles"] > MOST_MODEL_TRIANGLES:
-		return "has %d triangles, and the game takes at most %d in one model. Simplify it (in Blender, the Decimate modifier)." % [tally["triangles"], MOST_MODEL_TRIANGLES]
+		return "has %d triangles, and the game takes at most %d in one model. Use a lighter version of it." % [tally["triangles"], MOST_MODEL_TRIANGLES]
 	if tally["corners"] > MOST_MODEL_CORNERS:
-		return "has %d corners, and the game takes at most %d in one model. Simplify it (in Blender, the Decimate modifier)." % [tally["corners"], MOST_MODEL_CORNERS]
+		return "has %d corners, and the game takes at most %d in one model. Use a lighter version of it." % [tally["corners"], MOST_MODEL_CORNERS]
 	if tally["materials"] > MOST_MODEL_MATERIALS:
-		return "has %d materials, and the game takes at most %d. Join some in Blender." % [tally["materials"], MOST_MODEL_MATERIALS]
+		return "has %d materials, and the game takes at most %d in one model. Drag its mesh into the scene in place of the model, and Export splits it by material." % [tally["materials"], MOST_MODEL_MATERIALS]
 	if tally["surfaces"] > MOST_PRIMITIVES:
-		return "has a mesh of %d surfaces, and the game takes at most %d. Join some in Blender." % [tally["surfaces"], MOST_PRIMITIVES]
+		return "has a mesh of %d surfaces, and the game takes at most %d. Drag its mesh into the scene in place of the model, and Export joins surfaces of one material." % [tally["surfaces"], MOST_PRIMITIVES]
 	if tally["pictures"] > MOST_MODEL_PICTURES:
-		return "has %d pictures, and the game takes at most %d. Join some in Blender." % [tally["pictures"], MOST_MODEL_PICTURES]
+		return "has %d pictures, and the game takes at most %d in one model. Drag its mesh into the scene in place of the model, and Export splits it by material." % [tally["pictures"], MOST_MODEL_PICTURES]
 	return ""
 
 
@@ -1947,7 +1966,7 @@ static func _pictures_problem(bytes: PackedByteArray, source: String) -> String:
 ## What the game's checker would refuse in one picture of a model, in plain words, or nothing.
 static func _picture_problem(picture: PackedByteArray) -> String:
 	if picture.size() < 24 or picture.slice(1, 4).get_string_from_ascii() != "PNG":
-		return "has a picture that isn't a PNG. Save its pictures as PNG in Blender, then export it again."
+		return "has a picture that isn't a PNG. Save its pictures as PNG, then save the model again."
 	var width := _big_endian(picture, 16)
 	var height := _big_endian(picture, 20)
 	if width > MOST_PICTURE_SIDE or height > MOST_PICTURE_SIDE:
@@ -1959,7 +1978,7 @@ static func _picture_problem(picture: PackedByteArray) -> String:
 
 ## What Export says of a model reaching `reach` metres from its middle, past MOST_MODEL_REACH.
 static func _reach_problem(reach: float) -> String:
-	return "reaches %.0f m from its middle, and the game takes %.0f m. Cut it into smaller parts in Blender." % [reach, MOST_MODEL_REACH]
+	return "reaches %.0f m from its middle, and the game takes %.0f m. Scale it down." % [reach, MOST_MODEL_REACH]
 
 
 ## How many pixels across the widest or tallest of a .glb's colour pictures is, if they're PNGs.
@@ -2176,11 +2195,21 @@ static func length_set_right(bytes: PackedByteArray) -> PackedByteArray:
 	return bytes
 
 
-## Whether `node`, a mesh on its own, reaches further from its middle than the game takes in a model, as
-## a mesh imported from a whole level, holding everything of one material across it, does.
+## What Export says to keep a piece at `at` it leaves out for standing too far outside the map: press Fit to
+## map, or, past what even the biggest map reaches, that it can't be kept.
+static func _keep_words(at: Vector3) -> String:
+	var reach: float = HALF_WIDTHS.y + SCENERY_BEYOND
+	var keepable := absf(at.x) <= reach and absf(at.z) <= reach and at.y >= -BELOW_THE_FLOOR and at.y <= CEILINGS.y + SCENERY_BEYOND
+	if keepable:
+		return "Press Fit to map in the Map panel to keep it."
+	return "It stands further out than the biggest map reaches, so it can't be kept: move it in."
+
+
+## Whether `node`, a mesh on its own, reaches further from its middle than CUT_REACH, as a mesh imported
+## from a whole level, holding everything of one material across it, does.
 static func _too_wide(node: MeshInstance3D) -> bool:
 	var box: AABB = node.global_transform * node.mesh.get_aabb()
-	return box.size.x > MOST_MODEL_REACH * 2.0 or box.size.z > MOST_MODEL_REACH * 2.0 or box.size.y > MOST_MODEL_REACH * 2.0
+	return box.size.x > CUT_REACH * 2.0 or box.size.z > CUT_REACH * 2.0 or box.size.y > CUT_REACH * 2.0
 
 
 ## Cuts `node`, a mesh on its own too wide for one model, into parts by where its triangles lie, each a model
@@ -2237,7 +2266,7 @@ static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -
 		var bytes := built_glb(holder, true, scene.picture_side, scene.changes)
 		holder.free()
 		if bytes.is_empty():
-			scene.problem_on(node, "%s can't be made into models for the game. Export it from Blender as glTF Binary (.glb) in smaller parts instead." % node.name)
+			scene.problem_on(node, "%s can't be made into models for the game. Save it as glTF Binary (.glb) in smaller parts from the program that made it, and drag those in instead." % node.name)
 			return made
 		var name := _free_model_name("%s_%d_%d.glb" % [base, key.x, key.y], scene)
 		scene.built[name] = bytes
@@ -2248,7 +2277,7 @@ static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -
 		scene.sources["Piece"].append("Part %d of %s" % [made + 1, node.name])
 		made += 1
 	if left_out > 0:
-		scene.warning_among(node, "cut away", "%d triangles of %s lie too far outside the map, so they're left out." % [left_out, node.name], "Parts of %d meshes lie too far outside the map, so they're left out. Make the map wider to keep them.", "%s: %d triangles" % [node.name, left_out])
+		scene.warning_among(node, "cut away", "%d triangles of %s lie too far outside the map, so they're left out. %s" % [left_out, node.name, FIT_KEEPS_ALL_IT_CAN], "Parts of %%d meshes lie too far outside the map, so they're left out. %s" % FIT_KEEPS_ALL_IT_CAN, "%s: %d triangles" % [node.name, left_out])
 	return made
 
 
@@ -2360,7 +2389,7 @@ static func split_glbs(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, ch
 	return result
 
 
-## The middle of the box the meshes under `top` fill, if any of them reach further than the game takes from
+## The middle of the box the meshes under `top` fill, if any of them reach further than CUT_REACH from
 ## `top`'s own middle; nothing otherwise.
 static func _far_middle(top: Node3D) -> Vector3:
 	var box := AABB()
@@ -2374,7 +2403,7 @@ static func _far_middle(top: Node3D) -> Vector3:
 	var reach := 0.0
 	for corner in 8:
 		reach = maxf(reach, box.get_endpoint(corner).length())
-	return box.get_center() if reach > MOST_MODEL_REACH else Vector3.ZERO
+	return box.get_center() if reach > CUT_REACH else Vector3.ZERO
 
 
 ## Where `part` is under `top`, which it hangs below, whether or not either is in the scene tree.
@@ -2403,10 +2432,10 @@ static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "", na
 	var reach: float = root.half_width + SCENERY_BEYOND
 	var at := place.origin
 	if not model.is_empty() and (absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND):
-		scene.warning_among(node, "far model", "%s stands at (%.0f, %.0f, %.0f), too far outside the map, so it's left out. Pieces may stand up to %s m past the map's edge and ceiling: make the map wider to keep it." % [node.name, at.x, at.y, at.z, SCENERY_BEYOND], "%%d of the map's own models stand too far outside the map, so they're left out. Pieces may stand up to %s m past its edge and ceiling: make the map wider to keep them." % SCENERY_BEYOND)
+		scene.warning_among(node, "far model", "%s stands at (%.0f, %.0f, %.0f), too far outside the map, so it's left out. %s" % [node.name, at.x, at.y, at.z, _keep_words(at)], "%%d of the map's own models stand too far outside the map, so they're left out. %s" % FIT_KEEPS_ALL_IT_CAN)
 		return
 	if absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND:
-		scene.problem_among(node, "far", "%s is at (%.1f, %.1f, %.1f), too far outside the map. Pieces may stand up to %s m past its edge and ceiling." % [node.name, at.x, at.y, at.z, SCENERY_BEYOND], "%%d pieces are too far outside the map. Pieces may stand up to %s m past its edge and ceiling." % SCENERY_BEYOND)
+		scene.problem_among(node, "far", "%s is at (%.1f, %.1f, %.1f), too far outside the map. %s" % [node.name, at.x, at.y, at.z, _keep_words(at)], "%%d pieces are too far outside the map. %s" % FIT_KEEPS_ALL_IT_CAN)
 		return
 	var scale := place.basis.get_scale()
 	var unequal := maxf(absf(scale.x - scale.y), absf(scale.y - scale.z))
@@ -2423,9 +2452,10 @@ static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "", na
 	var up := (rotation * Vector3.UP).normalized()
 	var twist := Kit.arc_from_up(up).inverse() * rotation
 	var turn := wrapf(2.0 * atan2(twist.y, twist.w), -PI, PI)
-	var piece := {"kit": kit, "at": place.origin, "up": up, "turn": turn, "scale": scale.x}
+	var size := own_size_snapped(scale.x)
+	var piece := {"kit": kit, "at": place.origin, "up": up, "turn": turn, "scale": size}
 	if not model.is_empty():
-		piece = {"model": model, "at": place.origin, "up": up, "turn": turn, "scale": scale.x}
+		piece = {"model": model, "at": place.origin, "up": up, "turn": turn, "scale": size}
 	var is_switch := node.is_in_group(SWITCH_GROUP)
 	if named and (is_switch or node.is_in_group(SCRIPT_GROUP)):
 		piece["name"] = String(node.name)
@@ -2433,6 +2463,13 @@ static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "", na
 		piece["node"] = node
 	scene.pieces.append(piece)
 	scene.sources["Piece"].append(node)
+
+
+## `size`, or exactly 1 if it is within NOT_RESIZED of it. A piece only turned comes out of Godot a hair off
+## its own size, such as 0.99999994, and the game would take it as resized: it would copy its collider, and
+## count toward MOST_SCALED_TRIANGLES (#236).
+static func own_size_snapped(size: float) -> float:
+	return 1.0 if absf(size - 1.0) < NOT_RESIZED else size
 
 
 ## What's wrong with a piece's name for the map's script, in plain words, or nothing: the game's
@@ -2558,7 +2595,7 @@ static func _read_scatters(root: SmartFellasMap, scene: Scene) -> void:
 			scene.sources["Piece"].append("Copy %d of %s" % [index + 1, scatter.name])
 			taken += 1
 		if outside > 0:
-			scene.warning_among(scatter, "far copies", "%d copies in %s stand too far outside the map, so they're left out. Pieces may stand up to %s m past its edge and ceiling: make the map wider to keep them." % [outside, scatter.name, SCENERY_BEYOND], "Copies in %%d scattered meshes stand too far outside the map, so they're left out. Pieces may stand up to %s m past its edge and ceiling: make the map wider to keep them." % SCENERY_BEYOND, "%s: %d copies" % [scatter.name, outside])
+			scene.warning_among(scatter, "far copies", "%d copies in %s stand too far outside the map, so they're left out. %s" % [outside, scatter.name, FIT_KEEPS_ALL_IT_CAN], "Copies in %%d scattered meshes stand too far outside the map, so they're left out. %s" % FIT_KEEPS_ALL_IT_CAN, "%s: %d copies" % [scatter.name, outside])
 		if off_scale > 0:
 			scene.problem_on(scatter, "%d copies in %s are sized too far apart for the game: it takes a scattered mesh's copies up to %d times bigger or smaller than the middle one. Even their sizes out." % [off_scale, scatter.name, roundi(SCALES.y)])
 		if taken > 0:
@@ -2597,7 +2634,7 @@ static func _scatter_piece(place: Transform3D, size: float, model: String, root:
 	var up := (rotation * Vector3.UP).normalized()
 	var twist := Kit.arc_from_up(up).inverse() * rotation
 	var turn := wrapf(2.0 * atan2(twist.y, twist.w), -PI, PI)
-	return {"model": model, "at": at, "up": up, "turn": turn, "scale": size}
+	return {"model": model, "at": at, "up": up, "turn": turn, "scale": own_size_snapped(size)}
 
 
 ## The shade each copy of `scatter` is tinted, as words, or "" for each if its material doesn't show the
@@ -2665,7 +2702,7 @@ static func _scatter_model(scatter: MultiMeshInstance3D, stretch: Vector3, shade
 	var bytes := built_glb(holder, false, scene.picture_side, scene.changes)
 	holder.free()
 	if bytes.is_empty():
-		scene.problem_on(scatter, "%s's mesh can't be made into a model for the game. Export it from Blender as glTF Binary (.glb) instead." % scatter.name)
+		scene.problem_on(scatter, "%s's mesh can't be made into a model for the game. Save it as glTF Binary (.glb) from the program that made it, and scatter that instead." % scatter.name)
 		return ""
 	var name := _free_model_name(model_name(String(scatter.name)), scene)
 	scene.built[name] = bytes

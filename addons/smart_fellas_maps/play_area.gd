@@ -42,8 +42,9 @@ static func wholly_outside(map: SmartFellasMap, box: AABB) -> bool:
 
 ## Everything placed that the area is measured against: the markers, each as {"node", "points"}, the
 ## points the game holds to the area (a food patch's spots as well as its middle), and the pieces, each as
-## {"node", "words", "box", "at"}: placed by hand, the map's own models, and painted (with no node). "at" is
-## where Export measures a piece from. Hidden ones are out of the map, so out of this.
+## {"node", "words", "box", "at"}: placed by hand, the map's own models, each copy of a scattered mesh (its
+## node the scatter), and painted (with no node). "at" is where Export measures a piece from. Hidden ones are
+## out of the map, so out of this.
 static func gather(map: SmartFellasMap) -> Dictionary:
 	var markers: Array[Dictionary] = []
 	for node in map.find_children("*", "Marker3D", true, false):
@@ -66,6 +67,17 @@ static func gather(map: SmartFellasMap) -> Dictionary:
 		if not meshes.is_empty():
 			var box := _box_of_meshes(meshes)
 			pieces.append({"node": found["node"], "words": String(found["node"].name), "box": box, "at": box.get_center()})
+	for scatter in MapExporter.scatters(map):
+		var many := scatter.multimesh
+		var bounds := many.mesh.get_aabb()
+		var buffer := many.buffer
+		var count := many.instance_count if many.visible_instance_count < 0 else mini(many.visible_instance_count, many.instance_count)
+		# As Export reads them: from the buffer Godot saves, which holds them with no graphics card too.
+		if buffer.size() < count * MapExporter._copy_stride(many):
+			continue
+		for index in count:
+			var place := scatter.global_transform * MapExporter.copy_place(many, buffer, index)
+			pieces.append({"node": scatter, "words": "Copy %d of %s" % [index + 1, scatter.name], "box": place * bounds, "at": place.origin})
 	for kit: String in map.painted:
 		var values: PackedFloat32Array = map.painted[kit]
 		var bounds: AABB = Kit.info(kit)["bounds"]

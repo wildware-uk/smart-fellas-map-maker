@@ -2,6 +2,14 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-05be16e
+
+- Big maps from other games export as they are: up to 8,192 files, 4,096 models and 1,536 materials, and a model may reach 500 m from its middle.
+- Export's messages say what to press, and things standing outside the play area point to Fit to map.
+- Fit to map now takes in scattered copies standing outside the play area.
+- Models of up to 150,000 triangles, and maps of up to 20,000 pieces drawing 16 million triangles, export as they are.
+- Pieces you only turned keep exactly their own size.
+
 ## 2026.11.07-881e912
 
 - Small fixes and tidying.
