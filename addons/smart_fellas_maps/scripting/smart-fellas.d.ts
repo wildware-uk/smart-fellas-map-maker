@@ -30,6 +30,17 @@
 //   off for the rest of the match, and the host sees one line saying why.
 // - A bad argument (a name that doesn't exist, a point far outside the map) throws an Error you can
 //   catch. A handle to something that has gone does nothing and reads as gone.
+//
+// Game modes use the same calls. A mode is a folder with a mode.json (its name, description, player
+// counts and the lobby settings it offers) and a scripts/ folder laid out as a map's. The host picks
+// the mode in the lobby, apart from the map, and the mode's scripts run beside the map's in a world
+// of their own: each numbers the players for itself. The mode's run first each tick.
+// While a mode is played, the game's own win checks are off: the mode ends the round with
+// game.endRound(). When the clock runs out (and isn't held), the mode hears onTimeUp; if it doesn't
+// end the round on that tick, the round ends as a draw. A mode whose script stops ends a round being
+// played as a draw, and the match goes back to Classic.
+// The calls marked "for game modes" change the round's rules. A map's script may use them too, and
+// the mode then hears what happened through its own events (onTeamChange, onRoundEnd).
 
 /** A point in the map, in metres. y is up. */
 interface Point {
@@ -84,6 +95,29 @@ type SoundName =
 type TimerId = number;
 
 /**
+ * What being caught or killed does to a player of a team (for game modes):
+ * - "out": out for the rest of the round;
+ * - "held": out, and a netted octopus stays in its net where a teammate could free it;
+ * - "respawn": back after the wait, at the team's spawn;
+ * - "turn": back after the wait, on the other team.
+ */
+type Fate = "out" | "held" | "respawn" | "turn";
+
+/**
+ * What a bot is after (for game modes). The bot's own brain still swims it there.
+ * - "own": its usual play: an octopus hides, a diver hunts;
+ * - "hide": an octopus hides as usual; a diver keeps still;
+ * - "flee": away from the nearest foe it can see;
+ * - "roam": wanders about;
+ * - "hunt": a diver hunts as usual; an octopus goes after the nearest diver it can see;
+ * - "goTo": swims to a point and stays there.
+ */
+type Goal = "own" | "hide" | "flee" | "roam" | "hunt" | "goTo";
+
+/** The value of one of a game mode's lobby settings: a number, a choice's name, or a toggle. */
+type SettingValue = number | string | boolean;
+
+/**
  * A player in the match. The same player is always the same object, so === works. Once they have
  * left, `gone` is true, what they were reads as null, and what you ask of them does nothing.
  */
@@ -113,6 +147,51 @@ interface Player {
   addEnergy(points: number): void;
   /** Shows them alone a message from the map: 1 to 120 characters, a few a second at most. */
   say(text: string): void;
+
+  /** Whether the player is one of the game's bots. */
+  readonly isBot: boolean;
+  /** Their score this round, as the match's scripts set it (0 at the start of each round). */
+  readonly score: number;
+  /**
+   * Their role this round, as the match's scripts set it ("" for none). Only the host's scripts know
+   * it: it is never sent to players, so a mode can keep roles secret.
+   */
+  readonly role: string;
+
+  /**
+   * Moves them to the other team, at any time (for game modes). One alive gets a fresh body at the
+   * new team's start at once; one waiting for a round waits on the new team. They go back to the
+   * team they chose when the lobby comes back.
+   */
+  setTeam(team: Team): void;
+  /**
+   * Gives them a role for this round, kept on the host and shown nowhere by itself: 0 to 24
+   * characters, "" for none (for game modes).
+   */
+  setRole(role: string): void;
+  /** Sets their score: a whole number from -1000000000 to 1000000000 (for game modes). */
+  setScore(points: number): void;
+  /** Adds to their score, or takes away with a negative number (for game modes). */
+  addScore(points: number): void;
+  /**
+   * Brings them back now, if they are out or waiting to respawn in a round being played: at a point
+   * within 1000 m of the map's middle, or where their team comes back (for game modes).
+   */
+  respawn(x?: number, y?: number, z?: number): void;
+  /** Takes this bot out of the match, and one fewer of its team's bots is asked for (bots only). */
+  removeBot(): void;
+  /** Gives this bot something to be after; "goTo" takes a point (bots only, for game modes). */
+  setGoal(goal: Goal, x?: number, y?: number, z?: number): void;
+  /**
+   * Sets their cell under one of the columns game.scoreboard() named: a number, or text of 0 to 16
+   * characters (for game modes).
+   */
+  setCell(column: string, value: number | string): void;
+  /**
+   * Shows them alone a line under the banner, until it is changed or a round starts, or the lobby
+   * comes back: 0 to 80 characters, "" to clear it. It is on screen, not in chat (for game modes).
+   */
+  setLine(text: string): void;
 }
 
 /** A trigger box placed on the map, found by name with game.zone(). */
@@ -199,8 +278,11 @@ interface Game {
   players(): Player[];
   /** A number from 0 up to (not including) 1, the same series for the same match. */
   random(): number;
-  /** Ends the round, with `winner` the team that won it. */
-  endRound(winner: Team): void;
+  /**
+   * Ends the round, with `winner` the team that won it, or one player (where everyone plays for
+   * themselves, in a game mode), or "draw" for nobody.
+   */
+  endRound(winner: Team | Player | "draw"): void;
   /** Adds time to the round, or takes it away with a negative number: -3600 to 3600 seconds. */
   addTime(seconds: number): void;
 
@@ -239,12 +321,67 @@ interface Game {
   /** The names of the sounds a map can play. */
   sounds(): SoundName[];
 
+  /**
+   * The value of the game mode's lobby setting with this name in its mode.json, as the host chose
+   * it, or null if it has none (for game modes; a map's script reads null).
+   */
+  setting(name: string): SettingValue | null;
+  /** A team's score this round, as the match's scripts set it. */
+  teamScore(team: Team): number;
+  /** Sets a team's score: a whole number from -1000000000 to 1000000000 (for game modes). */
+  setTeamScore(team: Team, points: number): void;
+  /** Adds to a team's score, or takes away with a negative number (for game modes). */
+  addTeamScore(team: Team, points: number): void;
+  /**
+   * Every diver may hurt every other diver, whatever the lobby's friendly fire says: for modes where
+   * everyone plays for themselves (for game modes).
+   */
+  freeForAll(on: boolean): void;
+  /**
+   * Asks for `count` bots on a team, 0 to 32. The lobby keeps that many, and a round being played
+   * gets or loses them at once. People always keep their places: no more bots join than the
+   * team's cap in the lobby, the map and the mode's maxPlayers have room for (for game modes).
+   */
+  setBots(team: Team, count: number): void;
+  /** What being caught or killed does to a team's players, with the wait for "respawn" and "turn": 0 to 600 seconds (for game modes). */
+  setFate(team: Team, fate: Fate, seconds?: number): void;
+  /** Where a team's players come back, at a point within 1000 m of the map's middle (for game modes). */
+  setSpawn(team: Team, x: number, y: number, z: number): void;
+  /** A team's players come back at their own start points again (for game modes). */
+  clearSpawn(team: Team): void;
+  /** Sets the time left in a round being played: 0 to 86400 seconds (for game modes). */
+  setTimeLeft(seconds: number): void;
+  /** Holds the round's clock still, or lets it run again (for game modes). */
+  holdClock(held: boolean): void;
+  /**
+   * Names the live scoreboard's columns, up to 6 of 1 to 16 characters, each once, shown beside each
+   * player's name and score during the round and on the results. None hides it (for game modes).
+   */
+  scoreboard(...columns: string[]): void;
+  /** Shows everyone a banner across the top: 0 to 80 characters, "" to clear it (for game modes). */
+  banner(text: string): void;
+
   /** Calls `handler` once, when the match starts. */
   onMatchStart(handler: () => void): void;
   /** Calls `handler` when a round starts. */
   onRoundStart(handler: () => void): void;
-  /** Calls `handler` when a round ends, with the team that won it. */
-  onRoundEnd(handler: (winner: Team) => void): void;
+  /**
+   * Calls `handler` when a round ends, with the team that won it, or null and the player who won it,
+   * or null and null for a draw.
+   */
+  onRoundEnd(handler: (winner: Team | null, player: Player | null) => void): void;
+  /**
+   * Calls `handler` when a player comes back in a round being played, after being out or waiting
+   * to respawn. The lobby's warm-up bodies aren't respawns.
+   */
+  onRespawn(handler: (player: Player) => void): void;
+  /** Calls `handler` when a player moves to the other team, whatever moved them. */
+  onTeamChange(handler: (player: Player, from: Team, to: Team) => void): void;
+  /**
+   * Calls `handler` when the round's clock runs out, in a game mode. End the round on that tick, or
+   * it ends as a draw.
+   */
+  onTimeUp(handler: () => void): void;
   /** Calls `handler` when a player joins the match. */
   onJoin(handler: (player: Player) => void): void;
   /** Calls `handler` when a player leaves the match. Their handle reads as gone from then on. */
