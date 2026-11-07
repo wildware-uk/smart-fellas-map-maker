@@ -17,6 +17,7 @@ const MarkerTool := preload("marker_tool.gd")
 const SeabedTool := preload("seabed_tool.gd")
 const PaintPanel := preload("paint_panel.gd")
 const PlayAreaGizmos := preload("play_area_gizmos.gd")
+const ZoneGizmos := preload("zone_gizmos.gd")
 const PieceDrop := preload("piece_drop.gd")
 const PiecesPanel := preload("pieces_panel.gd")
 const TestResults := preload("test_results.gd")
@@ -58,6 +59,7 @@ var _map_dock: EditorDock
 var _markers: MarkerTool
 var _marker_gizmos: EditorNode3DGizmoPlugin
 var _play_area: PlayAreaGizmos
+var _zone_gizmos: ZoneGizmos
 var _sculptor: SeabedTool
 var _cost_bar: Control
 var _tool: BrushTool
@@ -113,6 +115,7 @@ func _enter_tree() -> void:
 	_markers.view_changed.connect(update_overlays)
 	_markers.said.connect(_say_about_markers)
 	_markers.stopped.connect(func() -> void: _map_panel.show_placing(""))
+	_markers.zone_dropped.connect(_select_alone)
 	_sculptor = SeabedTool.new()
 	_sculptor.history = get_undo_redo()
 	_sculptor.surface_under = _tool.surface_under
@@ -135,6 +138,9 @@ func _enter_tree() -> void:
 	_play_area.undo = get_undo_redo()
 	_play_area.shown = EditorInterface.get_editor_settings().get_project_metadata(SHOW_PLAY_AREA[0], SHOW_PLAY_AREA[1], true)
 	add_node_3d_gizmo_plugin(_play_area)
+	_zone_gizmos = ZoneGizmos.new()
+	_zone_gizmos.undo = get_undo_redo()
+	add_node_3d_gizmo_plugin(_zone_gizmos)
 	_map_panel.show_play_area_shown(_play_area.shown)
 	_map_panel.play_area_toggled.connect(_on_play_area_toggled)
 	_pieces_panel = PiecesPanel.new()
@@ -186,6 +192,7 @@ func _exit_tree() -> void:
 	_map_dock.queue_free()
 	remove_node_3d_gizmo_plugin(_marker_gizmos)
 	remove_node_3d_gizmo_plugin(_play_area)
+	remove_node_3d_gizmo_plugin(_zone_gizmos)
 	remove_dock(_pieces_dock)
 	_pieces_dock.queue_free()
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_BOTTOM, _cost_bar)
@@ -304,6 +311,12 @@ func _on_placing_asked(kind: String) -> void:
 	EditorInterface.get_selection().clear()
 	_map_panel.show_placing(kind)
 	_markers.start(kind)
+
+
+func _select_alone(node: Node) -> void:
+	var selection := EditorInterface.get_selection()
+	selection.clear()
+	selection.add_node(node)
 
 
 ## A button in the Map panel asks to sculpt in this mode, or -1 to stop.

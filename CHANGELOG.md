@@ -2,6 +2,14 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-d80c671
+
+- Populate dresses maps built from your own meshes: when little of the floor is sand, plants, food and fish go on the floors of your meshes, inside the play area.
+- Populate zones: drop a coral garden, open sand, kelp forest, bare or keep-clear zone from the Map panel, drag and size it in the 3D view, and Populate follows it.
+- Populate says plainly when the map is nearly full, or when nothing can go in the play area.
+- The Map panel can no longer lock up the editor, and Populate sits above the list of your own models.
+- Populate always leaves 500 pieces free for you to paint by hand.
+
 ## 2026.11.07-9402c8a
 
 - Small fixes and tidying.

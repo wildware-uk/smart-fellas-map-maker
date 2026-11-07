@@ -13,6 +13,7 @@ const Recipes := preload("recipes.gd")
 const SeabedTool := preload("seabed_tool.gd")
 const UpdateBanner := preload("update_banner.gd")
 const UpdateBox := preload("update_box.gd")
+const Zone := preload("populate_zone.gd")
 
 signal placing_asked(kind: String)
 signal sculpting_asked(mode: int)
@@ -105,6 +106,9 @@ func _ready() -> void:
 	add_child(banner)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# A scroll bar that came and went would narrow the column and rewrap its words, which could make it
+	# tall enough to need the bar again, back and forth until the editor ran out of room for messages.
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(scroll)
 	var column := VBoxContainer.new()
@@ -113,6 +117,7 @@ func _ready() -> void:
 	_add_map_rows(column)
 	_add_seabed(column)
 	_add_populate(column)
+	_add_own_models(column)
 	_add_heading(column, "Game pieces")
 	_add_place_buttons(column, PIECE_KINDS)
 	_add_heading(column, "Players")
@@ -185,6 +190,11 @@ func _add_seabed(column: Control) -> void:
 	flatten.tooltip_text = "Make the seabed flat sand again."
 	flatten.pressed.connect(func() -> void: flatten_asked.emit())
 	column.add_child(flatten)
+
+
+## What each of the map's own models is made of. Under Populate, as a map made of its own meshes can list
+## hundreds, which would push Populate out of reach.
+func _add_own_models(column: Control) -> void:
 	_add_heading(column, "Your own models")
 	_label(column, "What each of your own models and meshes is made of. Octopuses can bury themselves in sand and silt, and Populate grows sand's plants there. Anything else is rock. Select one in the scene to set it here too.")
 	_selected_line = VBoxContainer.new()
@@ -243,7 +253,7 @@ func sculpt_strength() -> float:
 
 func _add_populate(column: Control) -> void:
 	_add_heading(column, "Populate")
-	_label(column, "Dresses the whole map with what's ticked, on the seabed and on your pieces and models, walls and overhangs too. Then fix it by hand. Doing it again only redoes its own work in what's ticked: what you placed yourself stays.")
+	_label(column, "Dresses the whole map with what's ticked, on the seabed and on your pieces and models, walls and overhangs too. Then fix it by hand. Doing it again only redoes its own work in what's ticked: what you placed or painted yourself stays.")
 	var groups := GridContainer.new()
 	groups.columns = 2
 	for group: String in Populate.GROUPS:
@@ -255,6 +265,20 @@ func _add_populate(column: Control) -> void:
 		_populate_groups[group] = check
 		groups.add_child(check)
 	column.add_child(groups)
+	_label(column, "Zones, if you want them: press one, then click on the map to drop it. It's selected then: drag its arrows to move it, and the dot on its rim to size it. Select it in the Scene panel and press Delete to take it away. Populate uses them.")
+	var zones := GridContainer.new()
+	zones.columns = 2
+	for kind: Zone.Kind in Zone.KINDS:
+		var button := Button.new()
+		button.text = Zone.KINDS[kind]["words"]
+		button.tooltip_text = "%s Press, then click on the map to drop one. Esc or the right mouse button stops." % Zone.KINDS[kind]["tip"]
+		button.toggle_mode = true
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_color_override("font_color", (Zone.KINDS[kind]["colour"] as Color).lightened(0.3))
+		button.toggled.connect(_on_place_toggled.bind(Zone.placing(kind)))
+		_place_buttons[Zone.placing(kind)] = button
+		zones.add_child(button)
+	column.add_child(zones)
 	var line := HBoxContainer.new()
 	var label := Label.new()
 	label.text = "Seed"

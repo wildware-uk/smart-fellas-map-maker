@@ -24,6 +24,9 @@ const CLEAR_ABOVE := 0.3
 const LANDS_WITHIN := 0.02
 
 var has_sand := false
+## Whether a flat floor of rock counts as open ground, for what grows on sand, food and fish: Populate says
+## so on a map where little of the floor is sand.
+var rock_floors_are_open := false
 ## The height of the flat sand, or the lowest of the sculpted ground. With no seabed, the lowest of the
 ## pieces.
 var sand_height := 0.0
@@ -46,6 +49,13 @@ var _nodes: Array[Node3D] = []
 var _cells := {}
 ## How much surface each piece has in all, the pieces' running total, for picking spots on them.
 var _areas := PackedFloat32Array()
+## The same running total for each square picked within, by the square: a piece counts for as much of it
+## as its box's footprint lies in the square.
+var _areas_within := {}
+## What rocks_within last found, what it was asked, and how many pieces it had looked at: pieces only join.
+var _rocks_found := PackedInt32Array()
+var _rocks_asked := []
+var _rocks_counted := 0
 
 ## Each mesh's surface for rays, its faces, and its faces' running total of area, made once, by its
 ## key: a kit piece's name, or a model's mesh.
@@ -164,6 +174,7 @@ func _add(key: Variant, surface: TriangleMesh, faces: PackedVector3Array, bounds
 	_nodes.append(node)
 	if not _areas.is_empty():
 		_areas.append(_areas[_areas.size() - 1] + _area_in_the_world(index))
+	_areas_within.clear()
 	var low := _cell_of(box.position)
 	var high := _cell_of(box.end)
 	for x in range(low.x, high.x + 1):
@@ -257,8 +268,10 @@ static func _outward(faces: PackedVector3Array, index: int) -> Vector3:
 
 ## A spot picked at random on the pieces' surfaces, any way they face, every square metre as likely as
 ## any other, as find gives it: tops, sides and undersides alike. Empty if the spot is covered by something
-## else, or there are no pieces.
-func random_spot(rng: RandomNumberGenerator) -> Dictionary:
+## else, or there are no pieces. Given a square `within`, as seen from above, it picks among the pieces
+## over it, by how much of each lies over it, so that a map's meshes reaching far past it don't take most
+## of the picks; the spot itself may still lie outside it.
+func random_spot(rng: RandomNumberGenerator, within := Rect2()) -> Dictionary:
 	if _boxes.is_empty():
 		return {}
 	if _areas.is_empty():
@@ -267,7 +280,14 @@ func random_spot(rng: RandomNumberGenerator) -> Dictionary:
 		for index in _boxes.size():
 			total += _area_in_the_world(index)
 			_areas[index] = total
-	var index := _pick(_areas, rng.randf() * _areas[_areas.size() - 1])
+	var totals := _areas
+	if within.has_area():
+		if not _areas_within.has(within):
+			_areas_within[within] = _totals_within(within)
+		totals = _areas_within[within]
+	if totals[totals.size() - 1] <= 0.0:
+		return {}
+	var index := _pick(totals, rng.randf() * totals[totals.size() - 1])
 	var faces := _faces[index]
 	var areas := _areas_of(_keys[index], faces)
 	var face := _pick(areas, rng.randf() * areas[areas.size() - 1])
@@ -286,6 +306,52 @@ func random_spot(rng: RandomNumberGenerator) -> Dictionary:
 	if hit.is_empty() or (hit["at"] as Vector3).distance_to(at) > LANDS_WITHIN:
 		return {}
 	return hit
+
+
+## The pieces' running total of surface, each counted for the share of its box's footprint over `within`.
+func _totals_within(within: Rect2) -> PackedFloat32Array:
+	var totals := PackedFloat32Array()
+	totals.resize(_boxes.size())
+	var total := 0.0
+	for index in _boxes.size():
+		total += _area_in_the_world(index) * _share_over(_boxes[index], within)
+		totals[index] = total
+	return totals
+
+
+## How much of `box`'s footprint, seen from above, lies over `within`: from 0 to 1. A box with no width
+## one way, a flat floor, counts by its length the other.
+static func _share_over(box: AABB, within: Rect2) -> float:
+	var footprint := Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
+	var low := footprint.position.max(within.position)
+	var high := footprint.end.min(within.end)
+	if high.x < low.x or high.y < low.y:
+		return 0.0
+	var across := 1.0 if footprint.size.x <= 0.0 else (high.x - low.x) / footprint.size.x
+	var along := 1.0 if footprint.size.y <= 0.0 else (high.y - low.y) / footprint.size.y
+	return across * along
+
+
+## The solid pieces to shelter beside within `within`, as seen from above: those whose box lies over it
+## and is no wider than `widest` metres, as a rock or a wreck is and a map's whole ground isn't.
+func rocks_within(within: Rect2, widest: float) -> PackedInt32Array:
+	var asked := [within, widest]
+	if _rocks_asked == asked:
+		for index in range(_rocks_counted, _boxes.size()):
+			_add_if_shelter(index, within, widest)
+	else:
+		_rocks_asked = asked
+		_rocks_found = PackedInt32Array()
+		for index in _boxes.size():
+			_add_if_shelter(index, within, widest)
+	_rocks_counted = _boxes.size()
+	return _rocks_found
+
+
+func _add_if_shelter(index: int, within: Rect2, widest: float) -> void:
+	var box := _boxes[index]
+	if maxf(box.size.x, box.size.z) <= widest and _share_over(box, within) > 0.0:
+		_rocks_found.append(index)
 
 
 ## How much surface piece `index` has, at its size in the world.

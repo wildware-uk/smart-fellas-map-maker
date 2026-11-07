@@ -40,6 +40,8 @@ var placed := 0
 var removed := 0
 ## Set when the map is full: what to tell the person, in plain words.
 var stopped_because := ""
+## Where nothing may grow, if set: given a spot, true if it's kept clear. Populate's zones set it.
+var keeps_out := Callable()
 ## Whether each piece is drawn as it lands. Populate turns this off and draws them all at the end.
 var draws_as_it_goes := true
 
@@ -178,6 +180,8 @@ func _grows_on(hit: Dictionary) -> bool:
 	var at: Vector3 = hit["at"]
 	var half_width: float = _map.half_width
 	if absf(at.x) > half_width or absf(at.z) > half_width:
+		return false
+	if keeps_out.is_valid() and keeps_out.call(at):
 		return false
 	var above_sand := at.y - _finder.ground_under(at)
 	if above_sand < _recipe["height_low"] or above_sand > _recipe["height_high"]:
