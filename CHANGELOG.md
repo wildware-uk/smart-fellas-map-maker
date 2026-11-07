@@ -2,6 +2,12 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-9646833
+
+- Scenery and decorations can stand anywhere outside the play area now, up to 4 km from the middle of the map each way. Export no longer leaves them out.
+- Big ground meshes that reach deep under the floor export and load: the game no longer refuses their parts.
+- Fit to map now sizes the play area to your markers (spawns, food and creatures), the same every time you press it. Scenery outside no longer makes it bigger.
+
 ## 2026.11.07-805b541
 
 - Small fixes and tidying.

@@ -123,7 +123,7 @@ static func outside(map: SmartFellasMap, gathered: Dictionary) -> Dictionary:
 
 ## The smallest area that holds where players go, with FIT_MARGIN round it and FIT_HEADROOM over it, as
 ## {"half_width", "ceiling"} within what the game takes, or {} if there are no markers. Its edges hold the
-## markers: spawns, food, creatures and zones are where players go. Pieces may stand anywhere, as far out as
+## markers: spawns, food and creatures are where players go. Pieces may stand anywhere, as far out as
 ## they like (#245), so they never push the edges out; a piece standing wholly inside them raises the
 ## ceiling to swim over it, but one crossing an edge doesn't, as its whole box would overshoot: a hill of a
 ## ground mesh wider than the area can reach through the ceiling. It never looks at the area as it is now,
