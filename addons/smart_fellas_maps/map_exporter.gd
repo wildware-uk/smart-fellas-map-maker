@@ -53,6 +53,11 @@ const MOST_PICTURE_BYTES := 8388608
 ## How many pixels across the game draws a model's picture at most, so a bigger one is made this size,
 ## which loses nothing.
 const PICTURE_SIDE_DRAWN := 1024
+## What a material's glTF extras say to the game, from src/map/model.rs: "add" or "multiply" for a material
+## Godot adds to or multiplies what is behind it, and false for one Godot draws without its mesh's corner
+## colours, which glTF always multiplies by.
+const BLEND_EXTRA := "smart_fellas_blend"
+const CORNER_COLOURS_EXTRA := "smart_fellas_vertex_colour"
 ## The fewest pixels across Export makes every picture of a map whose pictures come to more than the game
 ## takes.
 const SMALLEST_PICTURE_SIDE := 256
@@ -1684,12 +1689,26 @@ static func _looks_of(description: Dictionary, used: Array, pictures: Array[Pack
 			continue
 		var material: Dictionary = materials[index]
 		var pbr: Dictionary = material.get("pbrMetallicRoughness", {})
-		var mode: String = material.get("alphaMode", "OPAQUE")
 		looks.append(str([
 			pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0]), picture_of.get(index, ""), pbr.get("metallicFactor", 1.0),
-			pbr.get("roughnessFactor", 1.0), material.get("doubleSided", false), material.get("alphaCutoff", 0.5) if mode != "OPAQUE" else null,
+			pbr.get("roughnessFactor", 1.0), material.get("doubleSided", false), _seen_through(material),
+			material.get("extensions", {}).has("KHR_materials_unlit"),
 		]))
 	return looks
+
+
+## How what is behind a glTF material shows through it, as the game tells it: added to or multiplied, as the
+## material's extras say; cut out where its alpha is below its cutoff; blended; or not at all, as null.
+static func _seen_through(material: Dictionary) -> Variant:
+	var extras: Variant = material.get("extras", {})
+	if extras is Dictionary and (extras as Dictionary).get(BLEND_EXTRA) is String:
+		return extras[BLEND_EXTRA]
+	match material.get("alphaMode", "OPAQUE"):
+		"MASK":
+			return ["MASK", material.get("alphaCutoff", 0.5)]
+		"BLEND":
+			return "BLEND"
+	return null
 
 
 ## The game's limits on all the map's own models together.
@@ -2022,7 +2041,9 @@ static func _join_same_materials(part: MeshInstance3D) -> void:
 static var _materials_drawn := {}
 
 
-## `material` as the game draws it: only its colour picture, unpacked and no more than `side` across.
+## `material` as the game draws it: only its colour picture, unpacked and no more than `side` across, and
+## what glTF has no words for in its extras: whether it adds to or multiplies what is behind it, and whether
+## it is drawn without its mesh's corner colours.
 static func _drawn_material(material: BaseMaterial3D, side: int) -> BaseMaterial3D:
 	var key := "%d %d" % [material.get_instance_id(), side]
 	if _materials_drawn.has(key):
@@ -2033,6 +2054,23 @@ static func _drawn_material(material: BaseMaterial3D, side: int) -> BaseMaterial
 	for texture in BaseMaterial3D.TEXTURE_MAX:
 		if texture != BaseMaterial3D.TEXTURE_ALBEDO:
 			drawn.set_texture(texture, null)
+	var extras: Dictionary = {}
+	if drawn.has_meta("extras") and drawn.get_meta("extras") is Dictionary:
+		extras = (drawn.get_meta("extras") as Dictionary).duplicate()
+	extras.erase(BLEND_EXTRA)
+	extras.erase(CORNER_COLOURS_EXTRA)
+	match drawn.blend_mode:
+		BaseMaterial3D.BLEND_MODE_ADD:
+			extras[BLEND_EXTRA] = "add"
+		BaseMaterial3D.BLEND_MODE_MUL:
+			extras[BLEND_EXTRA] = "multiply"
+	if not drawn.vertex_color_use_as_albedo:
+		extras[CORNER_COLOURS_EXTRA] = false
+	if extras.is_empty():
+		if drawn.has_meta("extras"):
+			drawn.remove_meta("extras")
+	else:
+		drawn.set_meta("extras", extras)
 	_materials_drawn[key] = drawn
 	return drawn
 
