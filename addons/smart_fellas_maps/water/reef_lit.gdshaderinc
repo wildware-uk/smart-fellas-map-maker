@@ -4,6 +4,11 @@
 //
 // The haze goes on after the light through Godot's FOG, as the game's does in its material, so that
 // bloom later on spreads the hazed picture.
+//
+// A shader that includes this defines SF_CUT_OUT for a piece with holes in it, such as a fence, or
+// SF_DITHERED for a see-through one, such as a decal, so that it keeps the see-through parts of the material
+// it stands in for. A see-through piece is dithered rather than blended: blended, it would be drawn after
+// screen.gdshader has graded the picture, and out of order with walls an importer marks see-through.
 
 #include "res://addons/smart_fellas_maps/water/water_common.gdshaderinc"
 
@@ -15,6 +20,16 @@ uniform float perceptual_roughness = 0.5;
 // Lays the picture out by place in the world rather than by the mesh, for the sand: repeats a metre,
 // then how far the middle of the map is from a corner of the seabed.
 uniform vec2 world_layout = vec2(0.0);
+// Whether the mesh's own colours tint it, and whether those are stored as sRGB, as the material it stands
+// in for has them.
+uniform bool vertex_colour = false;
+uniform bool vertex_colour_srgb = false;
+// How far out along its normals the mesh is pushed, so that a decal sits off the wall under it.
+uniform float grow = 0.0;
+#ifdef SF_CUT_OUT
+// Below how see-through a point is cut away.
+uniform float alpha_cut = 0.5;
+#endif
 
 // How freely this piece bends, and for a stiff coral, the height of its foot and how tall it is.
 instance uniform float flex = 0.0;
@@ -23,6 +38,7 @@ instance uniform float stiff_height = 0.0;
 
 varying vec3 world_at;
 varying vec2 uv_here;
+varying vec4 tint_here;
 
 // How the sun's picture repeats: the game's CAUSTICS_TILE, CAUSTICS_SLIDE and LOOP_SECONDS, and how many
 // frames its loop has.
@@ -56,6 +72,14 @@ vec3 sway_offset(vec3 position, float height, float weight, float bend) {
 }
 
 void vertex() {
+	VERTEX += NORMAL * grow;
+	tint_here = vec4(1.0);
+	if (vertex_colour) {
+		tint_here = COLOR;
+		if (vertex_colour_srgb) {
+			tint_here.rgb = mix(pow((COLOR.rgb + vec3(0.055)) * (1.0 / 1.055), vec3(2.4)), COLOR.rgb / 12.92, lessThan(COLOR.rgb, vec3(0.04045)));
+		}
+	}
 	vec3 rest = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_at = rest;
 	if (flex > 0.0) {
@@ -103,8 +127,16 @@ float mirror_of_the_fill(float rough, float along_view) {
 }
 
 void fragment() {
-	vec4 colour = texture(albedo_tex, uv_here) * base_colour;
+	vec4 colour = texture(albedo_tex, uv_here) * base_colour * tint_here;
 	ALBEDO = colour.rgb;
+#ifdef SF_CUT_OUT
+	ALPHA = colour.a;
+	ALPHA_SCISSOR_THRESHOLD = alpha_cut;
+#endif
+#ifdef SF_DITHERED
+	ALPHA = colour.a;
+	ALPHA_HASH_SCALE = 1.0;
+#endif
 	ROUGHNESS = perceptual_roughness;
 	METALLIC = 0.0;
 	SPECULAR = 0.5;

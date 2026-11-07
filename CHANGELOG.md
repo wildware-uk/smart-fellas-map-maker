@@ -2,6 +2,10 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-9402c8a
+
+- Small fixes and tidying.
+
 ## 2026.11.07-b55bdf9
 
 - Any mesh can now be marked Rock, Sand or Silt in the Map panel's "Your own models" list, not only .glb models, including loose meshes saved as .res files or inside the map. Select a model or mesh in the scene to set it from the line above the list.

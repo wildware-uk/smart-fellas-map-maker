@@ -42,6 +42,9 @@ const MOSS_PICTURE := "res://addons/smart_fellas_maps/textures/surfaces/rock_mos
 ## The name a seabed mesh goes by, as the exporter has it.
 const SEABED := "Seabed"
 
+## How a material lets what's behind it show.
+enum Seen { SOLID, CUT_OUT, DITHERED }
+
 ## The pictures the game makes for itself, loaded once however many maps are open.
 static var _pictures := {}
 
@@ -55,8 +58,12 @@ var _speck_material: ShaderMaterial
 var _dressed := {}
 var _seconds := 0.0
 var _time_held := false
-var _reef_lit: Shader = preload("reef_lit.gdshader")
-var _reef_lit_two_sided: Shader = preload("reef_lit_two_sided.gdshader")
+## The game's lighting, by how a piece lets what's behind it show and then whether it shows both its sides.
+var _reef_lit := {
+	Seen.SOLID: {false: preload("reef_lit.gdshader"), true: preload("reef_lit_two_sided.gdshader")},
+	Seen.CUT_OUT: {false: preload("reef_lit_cut_out.gdshader"), true: preload("reef_lit_cut_out_two_sided.gdshader")},
+	Seen.DITHERED: {false: preload("reef_lit_dithered.gdshader"), true: preload("reef_lit_dithered_two_sided.gdshader")},
+}
 
 
 func _ready() -> void:
@@ -297,7 +304,7 @@ func _dress_mesh(piece: MeshInstance3D) -> void:
 	var is_seabed := piece.name == SEABED
 	for surface in piece.mesh.get_surface_count():
 		var from := piece.mesh.surface_get_material(surface)
-		if from is BaseMaterial3D and piece.get_surface_override_material(surface) == null:
+		if _is_dressed(from) and piece.get_surface_override_material(surface) == null:
 			piece.set_surface_override_material(surface, _material_for(from, is_seabed))
 	var name_of_mesh := _name_in_the_game(piece.mesh.resource_name)
 	var flex := _flex_of(name_of_mesh)
@@ -314,7 +321,7 @@ func _dress_mesh(piece: MeshInstance3D) -> void:
 ## surface, so one material does for the batch. A batch is never saved, so it never needs undressing.
 func dress_batch(batch: MultiMeshInstance3D, mesh: Mesh) -> void:
 	var from := mesh.surface_get_material(0)
-	if from is BaseMaterial3D:
+	if _is_dressed(from):
 		batch.material_override = _material_for(from, false)
 	var name_of_mesh := _name_in_the_game(mesh.resource_name)
 	var flex := _flex_of(name_of_mesh)
@@ -343,12 +350,35 @@ func _undress_all_under(node: Node) -> void:
 		_undress_all_under(child)
 
 
+## Whether a material is drawn with the game's lighting. One that adds to or darkens what's behind it, such
+## as a glow or a stain, is unlit anyway, so it keeps its own.
+static func _is_dressed(material: Material) -> bool:
+	return material is BaseMaterial3D and (material as BaseMaterial3D).blend_mode == BaseMaterial3D.BLEND_MODE_MIX
+
+
+## How `material` lets what's behind it show: a fence has holes cut at its threshold, and a decal or glass,
+## blended or dithered, is dithered.
+static func _seen_through(material: BaseMaterial3D) -> Seen:
+	match material.transparency:
+		BaseMaterial3D.TRANSPARENCY_DISABLED:
+			return Seen.SOLID
+		BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+			return Seen.CUT_OUT
+	return Seen.DITHERED
+
+
 func _material_for(from: BaseMaterial3D, is_seabed: bool) -> ShaderMaterial:
 	if _dressed.has(from):
 		return _dressed[from]
 	var material := ShaderMaterial.new()
 	var two_sided := from.cull_mode == BaseMaterial3D.CULL_DISABLED
-	material.shader = _reef_lit_two_sided if two_sided else _reef_lit
+	var seen := _seen_through(from)
+	material.shader = _reef_lit[seen][two_sided]
+	if seen == Seen.CUT_OUT:
+		material.set_shader_parameter("alpha_cut", from.alpha_scissor_threshold)
+	material.set_shader_parameter("vertex_colour", from.vertex_color_use_as_albedo)
+	material.set_shader_parameter("vertex_colour_srgb", from.vertex_color_is_srgb)
+	material.set_shader_parameter("grow", from.grow_amount if from.grow else 0.0)
 	material.set_shader_parameter("caustic_frames", _caustic_frames())
 	material.set_shader_parameter("shade_bands", _picture("shade_bands.png"))
 	var tint := from.albedo_color.srgb_to_linear()
