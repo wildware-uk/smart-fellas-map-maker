@@ -408,7 +408,7 @@ func _add_play_area(column: Control) -> void:
 	_label(column, "Click the area's outline in the 3D view, or select the map at the top of the Scene panel, then drag the dots on its edges and ceiling. It snaps to 1 m, or 5 m with Ctrl held. Markers outside it are outlined red, as the game refuses them, and so are pieces too far out for Export to take. Pieces wholly outside it are outlined amber: players can see them but never reach them.")
 	var fit := Button.new()
 	fit.text = "Fit to map"
-	fit.tooltip_text = "Size the area to hold everything placed, with %s m to spare round it and %s m over the tallest thing." % [PlayArea.FIT_MARGIN, PlayArea.FIT_HEADROOM]
+	fit.tooltip_text = "Size the area to hold where players go, the markers, with %s m to spare round them and %s m over the tallest marker or piece wholly inside. Scenery outside never grows it." % [PlayArea.FIT_MARGIN, PlayArea.FIT_HEADROOM]
 	fit.pressed.connect(_on_fit)
 	column.add_child(fit)
 	_fit_said = _label(column, "")
@@ -429,7 +429,7 @@ func _on_fit() -> void:
 	var fitted := PlayArea.fit(map, PlayArea.gather(map))
 	_fit_said.visible = true
 	if fitted.is_empty():
-		_fit_said.text = "Nothing is placed yet, so there's nothing to fit."
+		_fit_said.text = "No markers yet, so there's nothing to fit: the area is fitted to where players go. Place spawns and food first, or tick them in Populate."
 		return
 	if is_equal_approx(map.half_width, fitted["half_width"]) and is_equal_approx(map.ceiling, fitted["ceiling"]):
 		_fit_said.text = "It fits already: %s m each way and %s m up." % [fitted["half_width"], fitted["ceiling"]]

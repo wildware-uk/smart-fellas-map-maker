@@ -45,9 +45,8 @@ const MOST_MODEL_PICTURES := 8
 ## The game's MAX_PRIMITIVES: the most surfaces one mesh of a model may have.
 const MOST_PRIMITIVES := 16
 const MOST_PICTURE_SIDE := 2048
-## What Export says of pieces left out for standing too far outside the map, some of which may be further
-## out than even the biggest map reaches.
-const FIT_KEEPS_ALL_IT_CAN := "Press Fit to map in the Map panel to keep all it can."
+## What Export says of scenery left out for standing further than SCENERY_REACH from the middle of the map.
+const TOO_FAR := "The game takes nothing further than 4 km from the middle of the map: move it in."
 ## The game's MAX_MODEL_REACH: how far from its own middle a model may reach, in metres.
 const MOST_MODEL_REACH := 500.0
 ## How far from its middle a mesh on its own may reach before Export cuts it into parts by place, as one
@@ -102,12 +101,16 @@ const STRETCH_STEP := 0.02
 ## How long a model's name in the package may be, before ".glb".
 const MOST_MODEL_NAME_LETTERS := 56
 const SCALES := Vector2(0.1, 10.0)
-## The game's limits on a map's size, on how far past it scenery may stand, how far below the floor
-## anything may be, on spawn points and patches, and on who may play.
+## The game's limits on a map's size, on how far past its edge a sculpted seabed may reach, how far from
+## the middle of the map scenery may stand (as TOO_FAR says), how far below the floor anything may be, on
+## spawn points and patches, and on who may play.
 const HALF_WIDTHS := Vector2(10.0, 250.0)
 const CEILINGS := Vector2(5.0, 100.0)
-const SCENERY_BEYOND := 60.0
+const SEABED_BEYOND := 60.0
+const SCENERY_REACH := 4000.0
 const BELOW_THE_FLOOR := 12.0
+## How far inside the map's reach Export moves a part it cuts that would stand just past it, in metres.
+const EDGE_HAIR := 0.01
 const MOST_SPAWNS := 256
 const MOST_PATCHES := 256
 const MOST_PLAYERS := 32
@@ -1130,8 +1133,8 @@ static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
 	if side < 2 or side > MOST_SEABED_SIDE or root.seabed_heights.size() != side * side or root.seabed_rock.size() != (side - 1) * (side - 1):
 		scene.problems.append("The sculpted seabed's numbers doesn't add up: %d points a side and %d heights. Press Flatten in the Map panel." % [side, root.seabed_heights.size()])
 		return
-	if not (root.seabed_reach >= 1.0 and root.seabed_reach <= root.half_width + SCENERY_BEYOND):
-		scene.problems.append("The sculpted seabed reaches %s m from the middle. It must be from 1 to %s." % [root.seabed_reach, root.half_width + SCENERY_BEYOND])
+	if not (root.seabed_reach >= 1.0 and root.seabed_reach <= root.half_width + SEABED_BEYOND):
+		scene.problems.append("The sculpted seabed reaches %s m from the middle. It must be from 1 to %s." % [root.seabed_reach, root.half_width + SEABED_BEYOND])
 	var highest := -INF
 	var lowest := INF
 	for height in root.seabed_heights:
@@ -1468,7 +1471,7 @@ static func _root_of(node: Node) -> SmartFellasMap:
 static func _check_food_spots_in_the_map(marker: Marker3D, root: SmartFellasMap, patch: Dictionary, scene: Scene) -> void:
 	for index in SPOTS_IN_A_PATCH:
 		var spot := _food_spot(patch, index)
-		if absf(spot.x) > root.half_width or absf(spot.z) > root.half_width or spot.y < -BELOW_THE_FLOOR or spot.y > root.ceiling:
+		if not in_the_map(root, spot):
 			scene.problem_on(marker, "%s is too near the map's edge: its food would grow at (%.1f, %.1f, %.1f), and the map reaches %s m each way from the middle and %s m up. Move it in by %s m." % [marker.name, spot.x, spot.y, spot.z, root.half_width, root.ceiling, SPOT_RING])
 			return
 
@@ -1486,7 +1489,7 @@ static func _check_in_the_map(marker: Marker3D, root: SmartFellasMap, scene: Sce
 	if not at.is_finite():
 		scene.problem_on(marker, "%s has a number that isn't a real number. Delete it and drop in another." % marker.name)
 		return false
-	elif absf(at.x) > root.half_width or absf(at.z) > root.half_width or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling:
+	elif not in_the_map(root, at):
 		scene.problem_on(marker, "%s is at (%.1f, %.1f, %.1f), outside the map. It reaches %s m each way from the middle and %s m up." % [marker.name, at.x, at.y, at.z, root.half_width, root.ceiling])
 		return false
 	return true
@@ -2204,14 +2207,24 @@ static func length_set_right(bytes: PackedByteArray) -> PackedByteArray:
 	return bytes
 
 
-## What Export says to keep a piece at `at` it leaves out for standing too far outside the map: press Fit to
-## map, or, past what even the biggest map reaches, that it can't be kept.
-static func _keep_words(at: Vector3) -> String:
-	var reach: float = HALF_WIDTHS.y + SCENERY_BEYOND
-	var keepable := absf(at.x) <= reach and absf(at.z) <= reach and at.y >= -BELOW_THE_FLOOR and at.y <= CEILINGS.y + SCENERY_BEYOND
-	if keepable:
-		return "Press Fit to map in the Map panel to keep it."
-	return "It stands further out than the biggest map reaches, so it can't be kept: move it in."
+## Whether the game takes a marker, a food spot or a trigger zone's middle at `at` in `root`'s map: inside its
+## edges, from the bottom of its walls up to its ceiling. The game's `Area::holds` in `src/map/check.rs`.
+static func in_the_map(root: SmartFellasMap, at: Vector3) -> bool:
+	return absf(at.x) <= root.half_width and absf(at.z) <= root.half_width and at.y >= -BELOW_THE_FLOOR and at.y <= root.ceiling
+
+
+## Whether the game takes scenery (a piece of the kit or of the map's own models, a copy of a scattered mesh)
+## standing at `at`: anywhere in or out of the play area, up to SCENERY_REACH from the middle of the map each
+## way, where numbers stay exact enough to draw. The one rule Export keeps scenery by. It is the game's
+## `Area::SCENERY` in `src/map/check.rs`: keep the two the same.
+static func scenery_kept(at: Vector3) -> bool:
+	return at.is_finite() and absf(at.x) <= SCENERY_REACH and absf(at.y) <= SCENERY_REACH and absf(at.z) <= SCENERY_REACH
+
+
+## `at` moved the shortest way to where scenery_kept takes it, a hair inside, so a number written in the
+## map's file and read back a little rounded is still in.
+static func into_scenery_reach(at: Vector3) -> Vector3:
+	return at.clamp(Vector3.ONE * -(SCENERY_REACH - EDGE_HAIR), Vector3.ONE * (SCENERY_REACH - EDGE_HAIR))
 
 
 ## Whether `node`, a mesh on its own, reaches further from its middle than CUT_REACH, as a mesh imported
@@ -2222,15 +2235,17 @@ static func _too_wide(node: MeshInstance3D) -> bool:
 
 
 ## Cuts `node`, a mesh on its own too wide for one model, into parts by where its triangles lie, each a model
-## of the map's own standing at its own middle: as few as cover the map with parts no wider than the game
-## takes in a model, each made of `ground`. Triangles outside the reach of the map are left out. Gives back how
-## many parts.
+## of the map's own standing at its own middle: as few as cover the mesh with parts no wider than the game
+## takes in a model, each made of `ground`. Triangles further out than the game takes scenery are left out.
+## Gives back how many parts.
 static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -> int:
-	var root := _root_of(node)
-	var reach: float = root.half_width + SCENERY_BEYOND
-	var cells := maxi(ceili(reach * 2.0 / WIDEST_CUT), 1)
-	var cell := reach * 2.0 / cells
 	var place := node.global_transform
+	# The squares the parts are cut by cover the mesh, as far as the game takes scenery.
+	var box: AABB = place * node.mesh.get_aabb()
+	var start := Vector2(box.position.x, box.position.z).clamp(-Vector2.ONE * SCENERY_REACH, Vector2.ONE * SCENERY_REACH)
+	var span := (Vector2(box.end.x, box.end.z).clamp(-Vector2.ONE * SCENERY_REACH, Vector2.ONE * SCENERY_REACH) - start).max(Vector2.ONE)
+	var cells := Vector2i(maxi(ceili(span.x / WIDEST_CUT), 1), maxi(ceili(span.y / WIDEST_CUT), 1))
+	var cell := span / Vector2(cells)
 	var turn := place.basis.orthonormalized()
 	var mesh := node.mesh
 	# Each part's triangles, by its cell, as {surface number: PackedInt32Array of corners}.
@@ -2244,10 +2259,10 @@ static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -
 		var corners: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(points.size()))
 		for first in range(0, corners.size() - 2, 3):
 			var middle := place * ((points[corners[first]] + points[corners[first + 1]] + points[corners[first + 2]]) / 3.0)
-			if absf(middle.x) > reach or absf(middle.z) > reach or middle.y < -BELOW_THE_FLOOR or middle.y > root.ceiling + SCENERY_BEYOND:
+			if not scenery_kept(middle):
 				left_out += 1
 				continue
-			var key := Vector2i(clampi(floori((middle.x + reach) / cell), 0, cells - 1), clampi(floori((middle.z + reach) / cell), 0, cells - 1))
+			var key := Vector2i(clampi(floori((middle.x - start.x) / cell.x), 0, cells.x - 1), clampi(floori((middle.z - start.y) / cell.y), 0, cells.y - 1))
 			if not parts.has(key):
 				parts[key] = {}
 			if not parts[key].has(surface):
@@ -2266,7 +2281,9 @@ static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -
 				var at: Vector3 = place * lists[surface][Mesh.ARRAY_VERTEX][corner]
 				low = low.min(at)
 				high = high.max(at)
-		var middle := (low + high) / 2.0
+		# Its triangles' middles are all in, but the middle of all its corners can lie past the edge, or
+		# under the floor where the ground dips below it.
+		var middle := into_scenery_reach((low + high) / 2.0)
 		for surface: int in parts[key]:
 			cut.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _cut_arrays(lists[surface], parts[key][surface], place, turn, middle))
 			cut.surface_set_material(cut.get_surface_count() - 1, _material_worn(node, surface))
@@ -2286,7 +2303,7 @@ static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -
 		scene.sources["Piece"].append("Part %d of %s" % [made + 1, node.name])
 		made += 1
 	if left_out > 0:
-		scene.warning_among(node, "cut away", "%d triangles of %s lie too far outside the map, so they're left out. %s" % [left_out, node.name, FIT_KEEPS_ALL_IT_CAN], "Parts of %%d meshes lie too far outside the map, so they're left out. %s" % FIT_KEEPS_ALL_IT_CAN, "%s: %d triangles" % [node.name, left_out])
+		scene.warning_among(node, "cut away", "%d triangles of %s lie too far out, so they're left out. %s" % [left_out, node.name, TOO_FAR], "Parts of %%d meshes lie too far out, so they're left out. %s" % TOO_FAR, "%s: %d triangles" % [node.name, left_out])
 	return made
 
 
@@ -2437,14 +2454,12 @@ static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "", na
 	var place := node.global_transform
 	# A model made about its own middle stands where that middle was.
 	place.origin = place * scene.model_middles.get(model, Vector3.ZERO)
-	var root := _root_of(node)
-	var reach: float = root.half_width + SCENERY_BEYOND
 	var at := place.origin
-	if not model.is_empty() and (absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND):
-		scene.warning_among(node, "far model", "%s stands at (%.0f, %.0f, %.0f), too far outside the map, so it's left out. %s" % [node.name, at.x, at.y, at.z, _keep_words(at)], "%%d of the map's own models stand too far outside the map, so they're left out. %s" % FIT_KEEPS_ALL_IT_CAN)
+	if not model.is_empty() and not scenery_kept(at):
+		scene.warning_among(node, "far model", "%s stands at (%.0f, %.0f, %.0f), too far out, so it's left out. %s" % [node.name, at.x, at.y, at.z, TOO_FAR], "%%d of the map's own models stand too far out, so they're left out. %s" % TOO_FAR)
 		return
-	if absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND:
-		scene.problem_among(node, "far", "%s is at (%.1f, %.1f, %.1f), too far outside the map. %s" % [node.name, at.x, at.y, at.z, _keep_words(at)], "%%d pieces are too far outside the map. %s" % FIT_KEEPS_ALL_IT_CAN)
+	if not scenery_kept(at):
+		scene.problem_among(node, "far", "%s is at (%.1f, %.1f, %.1f), too far out. %s" % [node.name, at.x, at.y, at.z, TOO_FAR], "%%d pieces are too far out. %s" % TOO_FAR)
 		return
 	var scale := place.basis.get_scale()
 	var unequal := maxf(absf(scale.x - scale.y), absf(scale.y - scale.z))
@@ -2524,7 +2539,7 @@ static func _check_triggers(root: SmartFellasMap, scene: Scene) -> void:
 			scene.problem_on(zone, "%s has a number that isn't a real number. Delete it and drop in another." % zone.name)
 		elif zone.is_turned():
 			scene.problem_on(zone, "%s is turned. The game's trigger zones stand upright, lined up with the map: set its rotation to 0 and size it with the dots on its sides." % zone.name)
-		elif absf(at.x) > root.half_width or absf(at.z) > root.half_width or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling:
+		elif not in_the_map(root, at):
 			scene.problem_on(zone, "%s has its middle at (%.1f, %.1f, %.1f), outside the map. It reaches %s m each way from the middle and %s m up." % [zone.name, at.x, at.y, at.z, root.half_width, root.ceiling])
 		elif reach.x <= 0.0 or reach.y <= 0.0 or reach.z <= 0.0 or reach.x > widest or reach.y > widest or reach.z > widest:
 			scene.problem_on(zone, "%s reaches (%.1f, %.1f, %.1f) m from its middle. It must reach more than 0 and at most %s m each way, as wide as the map: set its scale back to 1 and size it with the dots on its sides." % [zone.name, reach.x, reach.y, reach.z, widest])
@@ -2626,7 +2641,7 @@ static func _read_scatters(root: SmartFellasMap, scene: Scene) -> void:
 			if name.is_empty():
 				continue
 			var turn := Basis(place.basis.x / signed.x, place.basis.y / signed.y, place.basis.z / signed.z).orthonormalized()
-			var piece := _scatter_piece(Transform3D(turn, place.origin), size / base, name, root)
+			var piece := _scatter_piece(Transform3D(turn, place.origin), size / base, name)
 			if piece.is_empty():
 				outside += 1
 				continue
@@ -2637,7 +2652,7 @@ static func _read_scatters(root: SmartFellasMap, scene: Scene) -> void:
 			scene.sources["Piece"].append("Copy %d of %s" % [index + 1, scatter.name])
 			taken += 1
 		if outside > 0:
-			scene.warning_among(scatter, "far copies", "%d copies in %s stand too far outside the map, so they're left out. %s" % [outside, scatter.name, FIT_KEEPS_ALL_IT_CAN], "Copies in %%d scattered meshes stand too far outside the map, so they're left out. %s" % FIT_KEEPS_ALL_IT_CAN, "%s: %d copies" % [scatter.name, outside])
+			scene.warning_among(scatter, "far copies", "%d copies in %s stand too far out, so they're left out. %s" % [outside, scatter.name, TOO_FAR], "Copies in %%d scattered meshes stand too far out, so they're left out. %s" % TOO_FAR, "%s: %d copies" % [scatter.name, outside])
 		if off_scale > 0:
 			scene.problem_on(scatter, "%d copies in %s are sized too far apart for the game: it takes a scattered mesh's copies up to %d times bigger or smaller than the middle one. Even their sizes out." % [off_scale, scatter.name, roundi(SCALES.y)])
 		if taken > 0:
@@ -2663,12 +2678,11 @@ static func copy_place(many: MultiMesh, buffer: PackedFloat32Array, index: int) 
 	return Transform3D(columns, Vector3(buffer[at + 3], buffer[at + 7], buffer[at + 11]))
 
 
-## A piece of `model` at `place`, which holds no scale, scaled by `size`: {} if it's too far outside the map,
+## A piece of `model` at `place`, which holds no scale, scaled by `size`: {} if it stands too far out,
 ## or {"off_scale": true} if `size` is more than a piece can be scaled.
-static func _scatter_piece(place: Transform3D, size: float, model: String, root: SmartFellasMap) -> Dictionary:
-	var reach: float = root.half_width + SCENERY_BEYOND
+static func _scatter_piece(place: Transform3D, size: float, model: String) -> Dictionary:
 	var at := place.origin
-	if not at.is_finite() or absf(at.x) > reach or absf(at.z) > reach or at.y < -BELOW_THE_FLOOR or at.y > root.ceiling + SCENERY_BEYOND:
+	if not scenery_kept(at):
 		return {}
 	if size < SCALES.x or size > SCALES.y:
 		return {"off_scale": true}
@@ -2764,14 +2778,13 @@ static func _read_painted(root: SmartFellasMap, scene: Scene) -> void:
 			continue
 		var wrong_size := 0
 		var too_far := 0
-		var reach: float = root.half_width + SCENERY_BEYOND
 		for first in range(0, values.size(), Kit.STRIDE):
 			if values[first + 7] < SCALES.x or values[first + 7] > SCALES.y:
 				wrong_size += 1
-			if absf(values[first]) > reach or absf(values[first + 2]) > reach or values[first + 1] < -BELOW_THE_FLOOR or values[first + 1] > root.ceiling + SCENERY_BEYOND:
+			if not scenery_kept(Vector3(values[first], values[first + 1], values[first + 2])):
 				too_far += 1
 		if too_far > 0:
-			scene.problems.append("%d painted pieces of %s are too far outside the map, which has shrunk since. Make it bigger, or hold Shift and brush over them." % [too_far, Kit.plain_name(kit)])
+			scene.problems.append("%d painted pieces of %s are too far out. %s Or hold Shift and brush over them." % [too_far, Kit.plain_name(kit), TOO_FAR])
 		if wrong_size > 0:
 			scene.problems.append("%d painted pieces of %s are sized outside %s to %s. Erase them and paint again." % [wrong_size, Kit.plain_name(kit), SCALES.x, SCALES.y])
 		for first in range(0, values.size(), Kit.STRIDE):

@@ -28,7 +28,7 @@ const EDGE_WAYS := [Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]
 
 ## Whether `at` lies inside the map's area as the game holds markers to it.
 static func holds(map: SmartFellasMap, at: Vector3) -> bool:
-	return absf(at.x) <= map.half_width and absf(at.z) <= map.half_width and at.y >= -MapExporter.BELOW_THE_FLOOR and at.y <= map.ceiling
+	return MapExporter.in_the_map(map, at)
 
 
 ## Whether the whole of `box` lies outside the map's area: nothing in it can be reached.
@@ -95,10 +95,10 @@ static func _box_of_meshes(meshes: Array[MeshInstance3D]) -> AABB:
 	return box
 
 
-## Whether Export takes a piece measured from `at`: pieces may stand up to SCENERY_BEYOND past the area.
-static func within_reach(map: SmartFellasMap, at: Vector3) -> bool:
-	var reach: float = map.half_width + MapExporter.SCENERY_BEYOND
-	return absf(at.x) <= reach and absf(at.z) <= reach and at.y >= -MapExporter.BELOW_THE_FLOOR and at.y <= map.ceiling + MapExporter.SCENERY_BEYOND
+## Whether Export takes a piece measured from `at`: pieces may stand anywhere in or out of the area, up to
+## SCENERY_REACH from the middle of the map.
+static func within_reach(at: Vector3) -> bool:
+	return MapExporter.scenery_kept(at)
 
 
 ## What of `gathered` lies outside the area: {"markers": the marker nodes the game refuses, "far": the
@@ -114,16 +114,21 @@ static func outside(map: SmartFellasMap, gathered: Dictionary) -> Dictionary:
 	var far: Array[Dictionary] = []
 	var pieces: Array[Dictionary] = []
 	for piece: Dictionary in gathered["pieces"]:
-		if not within_reach(map, piece["at"]):
+		if not within_reach(piece["at"]):
 			far.append(piece)
 		elif wholly_outside(map, piece["box"]):
 			pieces.append(piece)
 	return {"markers": markers, "far": far, "pieces": pieces}
 
 
-## The smallest area that holds everything placed, with FIT_MARGIN round it and FIT_HEADROOM over it, as
-## {"half_width", "ceiling"} within what the game takes, or {} if nothing has been placed. A sculpted
-## seabed must stay within SCENERY_BEYOND of the edge, so the area keeps that close to its grid.
+## The smallest area that holds where players go, with FIT_MARGIN round it and FIT_HEADROOM over it, as
+## {"half_width", "ceiling"} within what the game takes, or {} if there are no markers. Its edges hold the
+## markers: spawns, food, creatures and zones are where players go. Pieces may stand anywhere, as far out as
+## they like (#245), so they never push the edges out; a piece standing wholly inside them raises the
+## ceiling to swim over it, but one crossing an edge doesn't, as its whole box would overshoot: a hill of a
+## ground mesh wider than the area can reach through the ceiling. It never looks at the area as it is now,
+## so pressing it again changes nothing. A sculpted seabed must stay within SEABED_BEYOND of the edge, so
+## the area keeps that close to its grid.
 static func fit(map: SmartFellasMap, gathered: Dictionary) -> Dictionary:
 	var reach := -INF
 	var top := -INF
@@ -131,18 +136,20 @@ static func fit(map: SmartFellasMap, gathered: Dictionary) -> Dictionary:
 		for point in marker["points"] as PackedVector3Array:
 			reach = maxf(reach, maxf(absf(point.x), absf(point.z)))
 			top = maxf(top, point.y)
-	for piece: Dictionary in gathered["pieces"]:
-		var box: AABB = piece["box"]
-		reach = maxf(reach, maxf(maxf(absf(box.position.x), absf(box.end.x)), maxf(absf(box.position.z), absf(box.end.z))))
-		top = maxf(top, box.end.y)
 	if reach == -INF:
 		return {}
 	var half := ceilf(reach + FIT_MARGIN)
 	if is_sculpted(map):
-		half = maxf(half, ceilf(map.seabed_reach - MapExporter.SCENERY_BEYOND))
+		half = maxf(half, ceilf(map.seabed_reach - MapExporter.SEABED_BEYOND))
+	half = clampf(half, MapExporter.HALF_WIDTHS.x, MapExporter.HALF_WIDTHS.y)
+	for piece: Dictionary in gathered["pieces"]:
+		var box: AABB = piece["box"]
+		var inside := box.position.x >= -half and box.end.x <= half and box.position.z >= -half and box.end.z <= half
+		if inside:
+			top = maxf(top, box.end.y)
 	top = maxf(top, _ground_top(map))
 	return {
-		"half_width": clampf(half, MapExporter.HALF_WIDTHS.x, MapExporter.HALF_WIDTHS.y),
+		"half_width": half,
 		"ceiling": clampf(ceilf((top + FIT_HEADROOM) * 2.0) / 2.0, MapExporter.CEILINGS.x, MapExporter.CEILINGS.y),
 	}
 
@@ -189,9 +196,9 @@ static func warnings(map: SmartFellasMap, gathered: Dictionary) -> Array[String]
 	var out := outside(map, gathered)
 	var far: Array = out["far"]
 	if far.size() == 1:
-		said.append("%s stands more than %s m outside the play area, outlined red in the 3D view. Export leaves it out or refuses it: move it in, or drag the area's edge out." % [far[0]["words"], MapExporter.SCENERY_BEYOND])
+		said.append("%s stands more than %d km from the middle of the map, outlined red in the 3D view. Export leaves it out or refuses it: move it in." % [far[0]["words"], roundi(MapExporter.SCENERY_REACH / 1000.0)])
 	elif far.size() > 1:
-		said.append("%d pieces stand more than %s m outside the play area, outlined red in the 3D view. Export leaves them out or refuses them: move them in, or drag the area's edges out." % [far.size(), MapExporter.SCENERY_BEYOND])
+		said.append("%d pieces stand more than %d km from the middle of the map, outlined red in the 3D view. Export leaves them out or refuses them: move them in." % [far.size(), roundi(MapExporter.SCENERY_REACH / 1000.0)])
 	var pieces: Array = out["pieces"]
 	if pieces.size() == 1:
 		said.append("%s stands wholly outside the play area, outlined amber in the 3D view. Swimmers can see it but never reach it." % pieces[0]["words"])
@@ -199,7 +206,7 @@ static func warnings(map: SmartFellasMap, gathered: Dictionary) -> Array[String]
 		said.append("%d pieces stand wholly outside the play area, outlined amber in the 3D view. Swimmers can see them but never reach them." % pieces.size())
 	var fitted := fit(map, gathered)
 	if not fitted.is_empty() and (map.half_width > fitted["half_width"] * TOO_BIG_SHARE + TOO_BIG_SLACK or map.ceiling > fitted["ceiling"] * TOO_BIG_SHARE + TOO_BIG_SLACK):
-		said.append("The play area is much bigger than what's in it: everything fits in %s m each way and %s m up. Empty water wastes space, and the bots take longer to chart it. Press Fit to map." % [fitted["half_width"], fitted["ceiling"]])
+		said.append("The play area is much bigger than where players go: the markers fit in %s m each way and %s m up. Empty water wastes space, and the bots take longer to chart it. Press Fit to map." % [fitted["half_width"], fitted["ceiling"]])
 	return said
 
 

@@ -19,6 +19,10 @@ const Recipes := preload("recipes.gd")
 const SurfaceFinder := preload("surface_finder.gd")
 const Zone := preload("populate_zone.gd")
 
+## How far over the map's ceiling a ray looking for the ground starts, in metres: over the tallest thing
+## standing above the play area.
+const RAY_HEADROOM := 60.0
+
 ## What it paints, in this order, because each grows on what came before. "recipe" is a brush recipe's name,
 ## "per_100" how many pieces it aims for in 100 square metres, "where" how it picks spots, and "wide" how
 ## far the brush reaches at each and how thick it paints: less than the recipes do by hand, so that the
@@ -475,7 +479,7 @@ static func _pick_spot(map: SmartFellasMap, layer: Dictionary, recipe: Dictionar
 
 
 static func _ray_down(map: SmartFellasMap, x: float, z: float, finder: SurfaceFinder) -> Dictionary:
-	var top: float = maxf(finder.sand_height, finder.ceiling_measured_from()) + map.ceiling + MapExporter.SCENERY_BEYOND
+	var top: float = maxf(finder.sand_height, finder.ceiling_measured_from()) + map.ceiling + RAY_HEADROOM
 	var bottom: float = finder.sand_height - 1.0 if finder.has_sand else -MapExporter.BELOW_THE_FLOOR - 1.0
 	return finder.find(Vector3(x, top, z), Vector3(x, bottom, z))
 
