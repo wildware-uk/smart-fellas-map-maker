@@ -28,7 +28,7 @@ const SCRIPT_PROBLEM_MARK := "script problem: "
 const TYPES_FILE := "res://addons/smart_fellas_maps/scripting/smart-fellas.d.ts"
 const EDITOR_SETTINGS_FILE := "res://addons/smart_fellas_maps/scripting/tsconfig.json"
 ## Said beside a map with scripts that passed: where they run, wherever the map goes.
-const SCRIPTS_RUN_BY_HOST := "This map has scripts. They run in the host's game only, in Test Map, My maps, lobbies and on the Workshop."
+const SCRIPTS_RUN_WHERE := "This map has scripts. Those in its scripts folder run in the host's game, those in client/ on each player's own PC, and those in shared/ on both: in Test Map, My maps, lobbies and on the Workshop."
 ## Where a map maker's own choice of the game's maps folder is kept, in Godot's editor settings, for
 ## when the game can't say.
 const CHOSEN_MAPS_KEY := "smart_fellas/maps_folder"
@@ -325,7 +325,7 @@ static func export_and_check(root: Node, out_folder: String, chosen_game: String
 	var went := "Exported to Smart Fellas: My maps\n(%s)" % folder if into_game else "Exported to %s" % folder
 	lines.append_array(exported["warnings"])
 	if not scripts.is_empty():
-		lines.append({"words": SCRIPTS_RUN_BY_HOST, "node": null})
+		lines.append({"words": SCRIPTS_RUN_WHERE, "node": null})
 	var game := GameFinder.starter_of(GameFinder.find(chosen_game))
 	if game.is_empty():
 		return {"state": State.NO_GAME, "folder": folder, "words": "%s\n\n%s" % [went, GameFinder.not_found_words()], "lines": lines}

@@ -7,5 +7,5 @@
     "isolatedModules": false,
     "skipLibCheck": true
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "client/*.ts", "shared/*.ts"]
 }

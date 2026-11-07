@@ -407,21 +407,31 @@ static func _build_folder(scene: Scene, text: String, folder: String, scripts :=
 	return _copy_scripts(scripts, folder)
 
 
-## Copies every built .js file in `scripts` into the package's scripts/ in `folder`. Gives back what went
-## wrong, or nothing.
+## Where a script runs is the folder it is in: scripts/ on the server, scripts/client/ on each player's
+## own PC, scripts/shared/ on both.
+const SCRIPT_PLACES: Array[String] = ["", "client", "shared"]
+
+
+## Copies every built .js file in `scripts`, and in its client/ and shared/, into the same places in the
+## package's scripts/ in `folder`. Gives back what went wrong, or nothing.
 static func _copy_scripts(scripts: String, folder: String) -> String:
 	if scripts.is_empty():
 		return ""
-	var into := folder.path_join("scripts")
-	var made := DirAccess.make_dir_recursive_absolute(into)
-	if made != OK:
-		return "Can't make the folder %s: %s." % [into, error_string(made)]
-	for name in DirAccess.get_files_at(scripts):
-		if not name.ends_with(".js"):
+	for place in SCRIPT_PLACES:
+		var from := scripts.path_join(place)
+		if not DirAccess.dir_exists_absolute(from):
 			continue
-		var copied := DirAccess.copy_absolute(scripts.path_join(name), into.path_join(name))
-		if copied != OK:
-			return "Can't copy the script %s into the map: %s." % [name, error_string(copied)]
+		var into := folder.path_join("scripts").path_join(place)
+		var made := DirAccess.make_dir_recursive_absolute(into)
+		if made != OK:
+			return "Can't make the folder %s: %s." % [into, error_string(made)]
+		for name in DirAccess.get_files_at(from):
+			if not name.ends_with(".js"):
+				continue
+			var copied := DirAccess.copy_absolute(from.path_join(name), into.path_join(name))
+			if copied != OK:
+				var shown := place.path_join(name) if not place.is_empty() else name
+				return "Can't copy the script %s into the map: %s." % [shown, error_string(copied)]
 	return ""
 
 

@@ -88,9 +88,10 @@ signal area_changed
 		show_water()
 
 @export_group("Scripts")
-## The folder of this map's scripts: TypeScript (.ts) or plain JavaScript (.js) files, directly inside
-## it. Export and Test Map build them into the map, and keep the types file smart-fellas.d.ts there for
-## your editor. Empty for a map with no scripts.
+## The folder of this map's scripts: TypeScript (.ts) or plain JavaScript (.js) files. Those directly
+## inside it run in the host's game, those in its client/ folder on each player's own PC, and those in
+## its shared/ folder on both. Export and Test Map build them into the map, and keep the types file
+## smart-fellas.d.ts there for your editor. Empty for a map with no scripts.
 @export_dir var scripts_folder := ""
 
 ## What the brush has painted: for each kind in the kit, a flat list of numbers, Kit.STRIDE to a piece.

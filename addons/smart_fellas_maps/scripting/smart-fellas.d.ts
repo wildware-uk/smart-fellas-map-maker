@@ -4,10 +4,24 @@
 // editor that knows TypeScript completes and checks your scripts as you type. Write each script as a
 // .ts file (or plain .js). Export and Test Map turn them into JavaScript for the game.
 //
+// Where a script runs is the folder it is in:
+// - Directly in the scripts folder: in the host's game only, which decides the match. What it
+//   changes reaches every player the way everything else does.
+// - In client/: on each player's own PC, for that player alone. Its messages and sounds are for
+//   that one screen. It can't change the match: anything else it asks for is ignored.
+// - In shared/: in the host's game for real, and on each player's own PC to guess ahead, so a door
+//   a player pulls starts moving at once on their screen. On a player's PC only its piece moves,
+//   turns, shows and hides happen, as a guess the host's game then confirms or puts right. Its
+//   messages and sounds come from the host's game. The copy on a player's PC hears only that
+//   player using a switch, and game.random() gives it different numbers, so let it guess from
+//   what it reads at the moment (where the door is now), not from counts it keeps.
+// - On a player's PC a script reads only what that player's game was sent: a player it wasn't sent
+//   has no position.
+//
 // How a script runs:
-// - On the host's game only. What it changes reaches every player the way everything else does.
-// - Every script in the folder is loaded at the start of the match, in name order, and they share
-//   their globals. There is no import: the game loads them all itself.
+// - The scripts in one place are loaded at the start of the match, in name order, and share their
+//   globals. The host's game loads shared/ first, then its own. There is no import: the game loads
+//   them all itself.
 // - Register handlers once, at the top of a file. The game calls them each tick (64 a second).
 // - Actions such as door.moveTo() are queued and applied after your handlers finish, so what you
 //   read stays as the tick began.
