@@ -19,13 +19,23 @@ const SeabedGrid := preload("seabed_grid.gd")
 
 ## The pieces on this map changed, whether by a brush, by undo or by hand.
 signal pieces_changed
+## The play area's half width or ceiling changed, by the panel, a handle, the Inspector or undo.
+signal area_changed
 
 ## What players call the map.
 @export var map_name := "New Map"
 ## The playable area runs from minus this to plus this on X and Z, in metres.
-@export_range(10.0, 250.0) var half_width := 20.0
+@export_range(10.0, 250.0) var half_width := 20.0:
+	set(value):
+		half_width = value
+		# The sculpted ground runs on flat past the area's edge, so it's drawn to it.
+		show_seabed()
+		_show_area()
 ## The highest anyone can swim, in metres above the valley floor.
-@export_range(5.0, 100.0) var ceiling := 13.5
+@export_range(5.0, 100.0) var ceiling := 13.5:
+	set(value):
+		ceiling = value
+		_show_area()
 
 @export_group("Seabed")
 ## Whether the map has a seabed. With none, its pieces and models are the only floor, and the game catches
@@ -239,6 +249,11 @@ static func _fill_ground(ground: MeshInstance3D, shape: Dictionary, triangles: P
 	arrays[Mesh.ARRAY_TEX_UV] = pictures
 	arrays[Mesh.ARRAY_INDEX] = triangles
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+
+func _show_area() -> void:
+	area_changed.emit()
+	update_gizmos()
 
 
 ## How many pieces the brush has painted on this map.

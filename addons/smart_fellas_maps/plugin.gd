@@ -16,6 +16,7 @@ const MarkerGizmos := preload("marker_gizmos.gd")
 const MarkerTool := preload("marker_tool.gd")
 const SeabedTool := preload("seabed_tool.gd")
 const PaintPanel := preload("paint_panel.gd")
+const PlayAreaGizmos := preload("play_area_gizmos.gd")
 const PieceDrop := preload("piece_drop.gd")
 const PiecesPanel := preload("pieces_panel.gd")
 const TestResults := preload("test_results.gd")
@@ -31,6 +32,9 @@ const TOOLS_SLOT := DOCK_SLOT_RIGHT_BL
 const TOOLS_LAYOUT := "Smart Fellas %s"
 
 const CHECK_FOR_UPDATES := "Smart Fellas: Check for updates"
+## Where the Map panel's Show play area is kept, in the project's editor settings rather than the map, as
+## the game has no use for it.
+const SHOW_PLAY_AREA := ["smart_fellas_maps", "show_play_area"]
 
 ## How many 3D views Godot can split into.
 const VIEWS := 4
@@ -53,6 +57,7 @@ var _paint_dock: EditorDock
 var _map_dock: EditorDock
 var _markers: MarkerTool
 var _marker_gizmos: EditorNode3DGizmoPlugin
+var _play_area: PlayAreaGizmos
 var _sculptor: SeabedTool
 var _cost_bar: Control
 var _tool: BrushTool
@@ -126,6 +131,12 @@ func _enter_tree() -> void:
 	EditorInterface.get_selection().selection_changed.connect(_on_selection_changed)
 	_marker_gizmos = MarkerGizmos.new()
 	add_node_3d_gizmo_plugin(_marker_gizmos)
+	_play_area = PlayAreaGizmos.new()
+	_play_area.undo = get_undo_redo()
+	_play_area.shown = EditorInterface.get_editor_settings().get_project_metadata(SHOW_PLAY_AREA[0], SHOW_PLAY_AREA[1], true)
+	add_node_3d_gizmo_plugin(_play_area)
+	_map_panel.show_play_area_shown(_play_area.shown)
+	_map_panel.play_area_toggled.connect(_on_play_area_toggled)
 	_pieces_panel = PiecesPanel.new()
 	_pieces_panel.piece_clicked.connect(_on_piece_clicked)
 	_pieces_panel.drag_started.connect(_on_piece_drag_started)
@@ -174,6 +185,7 @@ func _exit_tree() -> void:
 	remove_dock(_map_dock)
 	_map_dock.queue_free()
 	remove_node_3d_gizmo_plugin(_marker_gizmos)
+	remove_node_3d_gizmo_plugin(_play_area)
 	remove_dock(_pieces_dock)
 	_pieces_dock.queue_free()
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_BOTTOM, _cost_bar)
@@ -358,9 +370,26 @@ func _on_selection_changed() -> void:
 func _watch_map(map: SmartFellasMap) -> void:
 	if _map != null and is_instance_valid(_map) and _map.pieces_changed.is_connected(_on_pieces_changed):
 		_map.pieces_changed.disconnect(_on_pieces_changed)
+		_map.area_changed.disconnect(_map_panel.show_area)
 	_map = map
+	_play_area.forget()
 	if _map != null:
 		_map.pieces_changed.connect(_on_pieces_changed)
+		# As a handle drags, the numbers follow it at once; what's outside is said again once it's let go.
+		_map.area_changed.connect(_map_panel.show_area)
+
+
+func _on_play_area_toggled(on: bool) -> void:
+	_play_area.shown = on
+	EditorInterface.get_editor_settings().set_project_metadata(SHOW_PLAY_AREA[0], SHOW_PLAY_AREA[1], on)
+	_redraw_play_area()
+
+
+## Something on the map may have moved in or out of the play area.
+func _redraw_play_area() -> void:
+	_play_area.forget()
+	if _map != null and is_instance_valid(_map):
+		_map.update_gizmos()
 
 
 func _on_pieces_changed() -> void:
@@ -372,11 +401,13 @@ func _on_history_changed() -> void:
 	if _tool.is_idle():
 		_say_why_the_brush_cant_paint()
 	_cost_is_stale = true
+	_redraw_play_area()
 	update_overlays()
 
 
 func _on_tree_changed(_node: Node) -> void:
 	_cost_is_stale = true
+	_redraw_play_area()
 
 
 func _export() -> void:

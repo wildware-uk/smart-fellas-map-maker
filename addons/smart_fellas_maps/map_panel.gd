@@ -7,6 +7,7 @@ extends VBoxContainer
 
 const MapExporter := preload("map_exporter.gd")
 const MarkerKinds := preload("marker_kinds.gd")
+const PlayArea := preload("play_area.gd")
 const Populate := preload("populate.gd")
 const Recipes := preload("recipes.gd")
 const SeabedTool := preload("seabed_tool.gd")
@@ -17,6 +18,7 @@ signal placing_asked(kind: String)
 signal sculpting_asked(mode: int)
 signal flatten_asked
 signal sculpting_settings_changed(wide: float, strength: float)
+signal play_area_toggled(on: bool)
 
 const MINIMUM_WIDTH := 200.0
 const PROBLEM_COLOUR := Color(1.0, 0.45, 0.4)
@@ -83,6 +85,9 @@ var _models_listed: Array[String] = []
 var _update_box: UpdateBox
 var _notes_line: HSeparator
 var _notes: ScrollContainer
+var _show_area: CheckBox
+var _area_shown := true
+var _fit_said: Label
 
 
 func _ready() -> void:
@@ -348,6 +353,59 @@ func _add_map_rows(column: Control) -> void:
 	line.add_child(_name_edit)
 	column.add_child(line)
 	_add_numbers(column, NUMBERS)
+	_add_play_area(column)
+
+
+func _add_play_area(column: Control) -> void:
+	_show_area = CheckBox.new()
+	_show_area.text = "Show play area"
+	_show_area.tooltip_text = "Draw the area players can swim in, in the 3D view. It's only drawn here: the game never sees it."
+	_show_area.button_pressed = _area_shown
+	_show_area.toggled.connect(func(on: bool) -> void: play_area_toggled.emit(on))
+	column.add_child(_show_area)
+	_label(column, "Click the area's outline in the 3D view, or select the map at the top of the Scene panel, then drag the dots on its edges and ceiling. It snaps to 1 m, or 5 m with Ctrl held. Markers outside it are outlined red, as the game refuses them, and so are pieces too far out for Export to take. Pieces wholly outside it are outlined amber: players can see them but never reach them.")
+	var fit := Button.new()
+	fit.text = "Fit to map"
+	fit.tooltip_text = "Size the area to hold everything placed, with %s m to spare round it and %s m over the tallest thing." % [PlayArea.FIT_MARGIN, PlayArea.FIT_HEADROOM]
+	fit.pressed.connect(_on_fit)
+	column.add_child(fit)
+	_fit_said = _label(column, "")
+	_fit_said.visible = false
+
+
+## Ticks or clears Show play area without asking for it again.
+func show_play_area_shown(on: bool) -> void:
+	_area_shown = on
+	if _show_area != null:
+		_show_area.set_pressed_no_signal(on)
+
+
+func _on_fit() -> void:
+	var map := _map()
+	if map == null:
+		return
+	var fitted := PlayArea.fit(map, PlayArea.gather(map))
+	_fit_said.visible = true
+	if fitted.is_empty():
+		_fit_said.text = "Nothing is placed yet, so there's nothing to fit."
+		return
+	if is_equal_approx(map.half_width, fitted["half_width"]) and is_equal_approx(map.ceiling, fitted["ceiling"]):
+		_fit_said.text = "It fits already: %s m each way and %s m up." % [fitted["half_width"], fitted["ceiling"]]
+		return
+	# The numbers follow by the map's area_changed, and the rest once the history changes.
+	PlayArea.apply_fit(map, fitted, undo)
+	_fit_said.text = "Fitted: %s m each way and %s m up." % [fitted["half_width"], fitted["ceiling"]]
+
+
+## Makes the half width and ceiling say what the map says, as a handle drags them.
+func show_area() -> void:
+	var map := _map()
+	if map == null:
+		return
+	_showing = true
+	for row in NUMBERS:
+		_numbers[row[0]].value = map.get(row[0])
+	_showing = false
 
 
 func _add_numbers(column: Control, rows: Array) -> void:
@@ -425,6 +483,7 @@ func show_map() -> void:
 	var warned: Array[String] = []
 	for warning in rules.warnings:
 		warned.append(warning["words"])
+	warned.append_array(PlayArea.warnings(map, PlayArea.gather(map)))
 	_warnings.text = "\n".join(warned)
 	_warnings.visible = not warned.is_empty()
 	_fit_notes()
