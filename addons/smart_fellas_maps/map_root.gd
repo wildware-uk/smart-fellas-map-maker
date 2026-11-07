@@ -87,6 +87,12 @@ signal area_changed
 		water_overrides = value
 		show_water()
 
+@export_group("Scripts")
+## The folder of this map's scripts: TypeScript (.ts) or plain JavaScript (.js) files, directly inside
+## it. Export and Test Map build them into the map, and keep the types file smart-fellas.d.ts there for
+## your editor. Empty for a map with no scripts.
+@export_dir var scripts_folder := ""
+
 ## What the brush has painted: for each kind in the kit, a flat list of numbers, Kit.STRIDE to a piece.
 ## Thousands of pieces as nodes would make the editor crawl, so these are numbers, drawn in batches, and
 ## kept out of the Inspector. Export writes them with the rest.

@@ -21,6 +21,14 @@ const PROBLEMS_EXIT := 1
 const PROBLEM_MARK := "map problem: "
 ## What marks the line where the game says which folder its maps are in.
 const MAPS_FOLDER_MARK := "maps folder: "
+## What marks each line where the game says what is wrong with one of the map's scripts.
+const SCRIPT_PROBLEM_MARK := "script problem: "
+## The types file Export keeps in a map's scripts folder, so the map maker's editor completes and checks
+## their scripts, and the editor settings it puts beside it if there are none.
+const TYPES_FILE := "res://addons/smart_fellas_maps/scripting/smart-fellas.d.ts"
+const EDITOR_SETTINGS_FILE := "res://addons/smart_fellas_maps/scripting/tsconfig.json"
+## Said beside a map with scripts that passed, until the security review lets strangers' scripts run.
+const SCRIPTS_ONLY_IN_TEST := "This map has scripts. For now they run only in Test Map: My maps, the Workshop and lobbies refuse a map with scripts."
 ## Where a map maker's own choice of the game's maps folder is kept, in Godot's editor settings, for
 ## when the game can't say.
 const CHOSEN_MAPS_KEY := "smart_fellas/maps_folder"
@@ -38,6 +46,11 @@ enum State { EXPORT_REFUSED, NO_GAME, NO_MAPS_FOLDER, CANT_CHECK, PROBLEMS, FINE
 ## What to run to check the package in `folder`.
 static func check_command(game: String, folder: String) -> Dictionary:
 	return {"program": game, "args": PackedStringArray(["--check-map", folder])}
+
+
+## What to run to build the scripts in `folder` into `out`.
+static func build_command(game: String, folder: String, out: String) -> Dictionary:
+	return {"program": game, "args": PackedStringArray(["--build-script", folder, out])}
 
 
 ## What to run to ask the game where it keeps its maps.
@@ -114,6 +127,70 @@ static func ask_maps_folder(game: String, tree: SceneTree) -> Dictionary:
 		await tree.process_frame
 	said += _read_what_waits(pipe)
 	return read_maps_folder(OS.get_process_exit_code(pid), said, game)
+
+
+## Builds the map's scripts in `folder` with the game, frame by frame so that the editor doesn't freeze,
+## into a folder of the add-on's own for the map called `map_name`. Keeps the types file in `folder`
+## first. Gives back {"built": the folder of .js files}, {"problems": what is wrong, a line each, naming
+## the file and line}, or {"failed": what went wrong, in plain words}.
+static func build_scripts(game: String, folder: String, map_name: String, tree: SceneTree) -> Dictionary:
+	var source := ProjectSettings.globalize_path(folder)
+	if not DirAccess.dir_exists_absolute(source):
+		return {"problems": ["The map's scripts folder %s isn't there. Choose it again under Scripts in the Inspector, or empty it for none." % folder]}
+	keep_types_file(source)
+	var out := ProjectSettings.globalize_path("user://smart_fellas_scripts").path_join(MapExporter._folder_name(map_name))
+	MapExporter._remove_folder(out)
+	var command := build_command(game, source, out)
+	var running := OS.execute_with_pipe(command["program"], command["args"], false)
+	if running.is_empty():
+		return {"failed": "Can't run the game at %s. Check that it's there and is allowed to run." % game}
+	var pid: int = running["pid"]
+	var pipe: FileAccess = running["stdio"]
+	var said := ""
+	var started := Time.get_ticks_msec()
+	while OS.is_process_running(pid):
+		said += _read_what_waits(pipe)
+		if Time.get_ticks_msec() - started > CHECK_MILLISECONDS:
+			OS.kill(pid)
+			return {"failed": "The game at %s didn't build the map's scripts. It may be too old: update it and try again." % game}
+		await tree.process_frame
+	said += _read_what_waits(pipe)
+	return read_build_answer(OS.get_process_exit_code(pid), said, game, out)
+
+
+## What the game's answer to building scripts means: 0 is built, 1 with marked lines is problems with the
+## scripts, and anything else is the game not getting as far as them.
+static func read_build_answer(code: int, said: String, game: String, out: String) -> Dictionary:
+	if code == 0:
+		return {"built": out}
+	var problems: Array[String] = []
+	var others: Array[String] = []
+	for line in _lines_of(said):
+		if line.begins_with(SCRIPT_PROBLEM_MARK):
+			problems.append(line.trim_prefix(SCRIPT_PROBLEM_MARK))
+		else:
+			others.append(line)
+	if code == PROBLEMS_EXIT and not problems.is_empty():
+		return {"problems": problems}
+	var words := "The game at %s stopped with error %d before it could build the map's scripts." % [game, code]
+	if others.is_empty():
+		return {"failed": words + " Try opening it by itself."}
+	return {"failed": "%s It said:\n%s" % [words, "\n".join(others)]}
+
+
+## Puts the add-on's types file in the scripts folder `source`, in place of an older one, and editor
+## settings beside it if it has none, so the map maker's editor knows the game's API.
+static func keep_types_file(source: String) -> void:
+	var types := FileAccess.get_file_as_bytes(TYPES_FILE)
+	var kept := source.path_join(TYPES_FILE.get_file())
+	if not types.is_empty() and FileAccess.get_file_as_bytes(kept) != types:
+		var file := FileAccess.open(kept, FileAccess.WRITE)
+		if file != null:
+			file.store_buffer(types)
+			file.close()
+	var settings := source.path_join(EDITOR_SETTINGS_FILE.get_file())
+	if not FileAccess.file_exists(settings):
+		DirAccess.copy_absolute(ProjectSettings.globalize_path(EDITOR_SETTINGS_FILE), settings)
 
 
 ## What the game said about its maps folder: the marked line, if it left with 0.
@@ -217,7 +294,24 @@ static func source_of(problem: String, sources: Dictionary) -> Variant:
 ##   "details", the lines behind it, if it was said once for many things.
 ## `into_game` says the folder is the game's own maps folder, which is said in words a map maker knows.
 static func export_and_check(root: Node, out_folder: String, chosen_game: String, tree: SceneTree, into_game := false) -> Dictionary:
-	var exported := MapExporter.export_map(root, out_folder)
+	var scripts := ""
+	var scripts_folder: String = root.scripts_folder if root is SmartFellasMap else ""
+	if not scripts_folder.is_empty():
+		var builder := GameFinder.starter_of(GameFinder.find(chosen_game))
+		if builder.is_empty():
+			return {"state": State.NO_GAME, "words": "This map has scripts, and the game builds them, so the map hasn't been exported.\n\n%s" % GameFinder.not_found_words(), "lines": []}
+		var built := await build_scripts(builder, scripts_folder, root.map_name, tree)
+		if built.has("failed"):
+			return {"state": State.CANT_CHECK, "game": builder, "words": built["failed"], "lines": []}
+		if built.has("problems"):
+			var problems: Array[Dictionary] = []
+			for words: String in built["problems"]:
+				problems.append({"words": words, "node": null})
+			return {"state": State.EXPORT_REFUSED, "words": "This map's scripts don't build yet:", "lines": problems}
+		# A folder with no scripts in it yet makes a map with none.
+		if DirAccess.get_files_at(built["built"]).size() > 0:
+			scripts = built["built"]
+	var exported := MapExporter.export_map(root, out_folder, scripts)
 	var lines: Array[Dictionary] = []
 	if exported.has("problems"):
 		for words: String in exported["problems"]:
@@ -230,6 +324,8 @@ static func export_and_check(root: Node, out_folder: String, chosen_game: String
 	var folder: String = exported["package"]
 	var went := "Exported to Smart Fellas: My maps\n(%s)" % folder if into_game else "Exported to %s" % folder
 	lines.append_array(exported["warnings"])
+	if not scripts.is_empty():
+		lines.append({"words": SCRIPTS_ONLY_IN_TEST, "node": null})
 	var game := GameFinder.starter_of(GameFinder.find(chosen_game))
 	if game.is_empty():
 		return {"state": State.NO_GAME, "folder": folder, "words": "%s\n\n%s" % [went, GameFinder.not_found_words()], "lines": lines}

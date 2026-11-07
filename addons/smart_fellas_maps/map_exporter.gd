@@ -339,7 +339,8 @@ static func _is_the_games_repository(folder: String) -> bool:
 ## lines behind a problem said once for many things, and "warnings" if the scene was read}.
 ## "warnings" says what doesn't stop it but is worth knowing, as {"words", "node"}, and "details" for one
 ## said once for many things. What Export did by itself is the first of them.
-static func export_map(root: Node, out_folder: String) -> Dictionary:
+## `scripts` is a folder of built .js files to put in the map's scripts/, or "" for none.
+static func export_map(root: Node, out_folder: String, scripts := "") -> Dictionary:
 	if not (root is SmartFellasMap):
 		return {"problems": ["This scene's top node isn't a SmartFellasMap. Open a map's scene first."]}
 	if not root.is_inside_tree():
@@ -360,7 +361,7 @@ static func export_map(root: Node, out_folder: String) -> Dictionary:
 		return {"problems": ["Can't make the folder %s: %s." % [out_folder, error_string(made)]]}
 	var name := _folder_name(root.map_name)
 	var folder := _building_folder(name)
-	var built := _build_folder(scene, text, folder)
+	var built := _build_folder(scene, text, folder, scripts)
 	var package := out_folder.path_join("%s.%s" % [name, SFM_EXTENSION])
 	if built.is_empty():
 		built = pack_folder(folder, package)
@@ -382,7 +383,7 @@ static func _building_folder(name: String) -> String:
 
 
 ## Writes the package's files into `folder`, emptied first. Gives back what went wrong, or nothing.
-static func _build_folder(scene: Scene, text: String, folder: String) -> String:
+static func _build_folder(scene: Scene, text: String, folder: String, scripts := "") -> String:
 	_remove_folder(folder)
 	var made := DirAccess.make_dir_recursive_absolute(folder)
 	if made != OK:
@@ -396,6 +397,24 @@ static func _build_folder(scene: Scene, text: String, folder: String) -> String:
 		return "Can't write to %s: %s." % [folder, why]
 	file.store_string(text)
 	file.close()
+	return _copy_scripts(scripts, folder)
+
+
+## Copies every built .js file in `scripts` into the package's scripts/ in `folder`. Gives back what went
+## wrong, or nothing.
+static func _copy_scripts(scripts: String, folder: String) -> String:
+	if scripts.is_empty():
+		return ""
+	var into := folder.path_join("scripts")
+	var made := DirAccess.make_dir_recursive_absolute(into)
+	if made != OK:
+		return "Can't make the folder %s: %s." % [into, error_string(made)]
+	for name in DirAccess.get_files_at(scripts):
+		if not name.ends_with(".js"):
+			continue
+		var copied := DirAccess.copy_absolute(scripts.path_join(name), into.path_join(name))
+		if copied != OK:
+			return "Can't copy the script %s into the map: %s." % [name, error_string(copied)]
 	return ""
 
 
