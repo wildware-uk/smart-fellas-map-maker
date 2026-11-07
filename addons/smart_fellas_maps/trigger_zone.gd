@@ -64,12 +64,15 @@ static func new_zone(at: Vector3) -> Node3D:
 
 
 ## The most `zone` may reach from its middle each way in the world, as the game's checker allows: as wide
-## as its map, which is twice its half width or ceiling, whichever is bigger.
+## as its play area, which is the bigger of its width and depth, or twice its height over its base.
 static func widest_in(zone: Node3D) -> float:
 	var map := zone.get_parent()
 	while map != null and not map is SmartFellasMap:
 		map = map.get_parent()
-	return maxf(map.half_width, map.ceiling) * 2.0 if map != null else REACHES.y
+	if map == null:
+		return REACHES.y
+	var area: AABB = map.area_box()
+	return maxf(maxf(area.size.x, area.size.z) * 0.5, map.area_ceiling() - map.area_base()) * 2.0
 
 
 ## The reach on `axis` (0, 1 or 2) that puts that side of `zone` at `at` in the world, snapped, kept in

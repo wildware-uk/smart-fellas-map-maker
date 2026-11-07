@@ -2,6 +2,12 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-efc796a
+
+- The play area is now a box you place anywhere and size on each side by dragging the dots on its faces. Fit to map fits it round your spawns and food in one press.
+- Scenery and sculpted ground may sit anywhere, inside the play area or far outside it. Only players are kept inside.
+- Maps made with this version need the newest Smart Fellas.
+
 ## 2026.11.07-9646833
 
 - Scenery and decorations can stand anywhere outside the play area now, up to 4 km from the middle of the map each way. Export no longer leaves them out.

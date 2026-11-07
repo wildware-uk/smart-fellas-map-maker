@@ -259,11 +259,12 @@ static func _sand_share(map: SmartFellasMap, finder: SurfaceFinder) -> float:
 ## What rays straight down on a grid over the play area land on, those that land.
 static func _rays_over(map: SmartFellasMap, finder: SurfaceFinder) -> Array[Dictionary]:
 	var hits: Array[Dictionary] = []
-	var reach: float = map.half_width * EDGE_SHARE
+	var middle := _middle(map)
+	var reach := _half(map) * EDGE_SHARE
 	for row in SAND_RAYS:
 		for column in SAND_RAYS:
-			var x := lerpf(-reach, reach, (column + 0.5) / SAND_RAYS)
-			var z := lerpf(-reach, reach, (row + 0.5) / SAND_RAYS)
+			var x := lerpf(middle.x - reach.x, middle.x + reach.x, (column + 0.5) / SAND_RAYS)
+			var z := lerpf(middle.y - reach.y, middle.y + reach.y, (row + 0.5) / SAND_RAYS)
 			var hit := _ray_down(map, x, z, finder)
 			if not hit.is_empty():
 				hits.append(hit)
@@ -333,12 +334,51 @@ static func _zone_area(map: SmartFellasMap, zone: Dictionary) -> float:
 
 ## The play area, as seen from above.
 static func _play_square(map: SmartFellasMap) -> Rect2:
-	return Rect2(-map.half_width, -map.half_width, map.half_width * 2.0, map.half_width * 2.0)
+	var box := map.area_box()
+	return Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
 
 
 static func _area_of(map: SmartFellasMap) -> float:
-	var width: float = map.half_width * 2.0
-	return width * width
+	return _play_square(map).get_area()
+
+
+## The play area's middle on the flat, as (x, z).
+static func _middle(map: SmartFellasMap) -> Vector2:
+	return _play_square(map).get_center()
+
+
+## How far the play area reaches from its middle along X and along Z.
+static func _half(map: SmartFellasMap) -> Vector2:
+	return _play_square(map).size * 0.5
+
+
+## Half the side of a square as big as the play area: what spaces things out by its size.
+static func _even_half(map: SmartFellasMap) -> float:
+	var half := _half(map)
+	return sqrt(half.x * half.y)
+
+
+## Whether (x, z) is inside the play area's sides.
+static func _inside(map: SmartFellasMap, x: float, z: float) -> bool:
+	var square := _play_square(map)
+	return x >= square.position.x and x <= square.end.x and z >= square.position.y and z <= square.end.y
+
+
+## `point` kept within `reach` of the play area's middle along X and along Z.
+static func _clamp_in(map: SmartFellasMap, point: Vector2, reach: Vector2) -> Vector2:
+	var middle := _middle(map)
+	return middle + (point - middle).clamp(-reach, reach)
+
+
+## A place within `reach` of the play area's middle along X and along Z.
+static func _random_in(map: SmartFellasMap, reach: Vector2, rng: RandomNumberGenerator) -> Vector2:
+	var middle := _middle(map)
+	return middle + Vector2(rng.randf_range(-reach.x, reach.x), rng.randf_range(-reach.y, reach.y))
+
+
+## The highest anyone can swim. An older map's square measured it from the sand; a box's is where it is.
+static func _ceiling(map: SmartFellasMap, finder: SurfaceFinder) -> float:
+	return map.area_ceiling() + (finder.ceiling_measured_from() if map.play_area() == null else 0.0)
 
 
 ## Round patches to dress, as (x, z, radius), covering about `cover` of the map, or none if it all gets dressed.
@@ -346,15 +386,17 @@ static func _gardens(map: SmartFellasMap, cover: float, rng: RandomNumberGenerat
 	var gardens := PackedVector3Array()
 	if cover >= 1.0:
 		return gardens
-	var radius := clampf(map.half_width * GARDEN_SHARE, GARDEN_RADII.x, GARDEN_RADII.y)
+	var radius := clampf(_even_half(map) * GARDEN_SHARE, GARDEN_RADII.x, GARDEN_RADII.y)
 	var count := maxi(ceili(cover * _area_of(map) / (PI * radius * radius)), 1)
-	var reach: float = map.half_width * EDGE_SHARE - radius * 0.5
+	var reach := (_half(map) * EDGE_SHARE - Vector2.ONE * radius * 0.5).max(Vector2.ZERO)
 	for _garden in count:
-		var best := Vector3(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach), radius)
+		var place := _random_in(map, reach, rng)
+		var best := Vector3(place.x, place.y, radius)
 		for _try in GARDEN_TRIES:
 			if _clear_of_gardens(best, gardens):
 				break
-			best = Vector3(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach), radius)
+			place = _random_in(map, reach, rng)
+			best = Vector3(place.x, place.y, radius)
 		gardens.append(best)
 	return gardens
 
@@ -437,23 +479,23 @@ static func _in_a_zone(map: SmartFellasMap, layer: Dictionary, recipe: Dictionar
 		if pick <= weights[index]:
 			zone = thicker_in[index]["zone"]
 			break
-	var reach: float = map.half_width * EDGE_SHARE
+	var reach := _half(map) * EDGE_SHARE
 	if not layer["where"] in ["on_rock", "on_walls"]:
-		var point := Zone.point_in(zone, rng)
-		return _ray_down(map, clampf(point.x, -reach, reach), clampf(point.y, -reach, reach), finder)
+		var point := _clamp_in(map, Zone.point_in(zone, rng), reach)
+		return _ray_down(map, point.x, point.y, finder)
 	var at: Vector2 = zone["at"]
 	var radius: float = zone["radius"]
 	for try in TRIES_ON_MESHES:
 		var hit := {}
 		if layer["where"] == "on_rock" and try % 2 == 1:
-			var point := Zone.point_in(zone, rng)
-			hit = _ray_down(map, clampf(point.x, -reach, reach), clampf(point.y, -reach, reach), finder)
+			var point := _clamp_in(map, Zone.point_in(zone, rng), reach)
+			hit = _ray_down(map, point.x, point.y, finder)
 		else:
 			hit = finder.random_spot(rng, Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0))
 		if hit.is_empty() or not Brush.lands_on(recipe, hit):
 			continue
 		var spot: Vector3 = hit["at"]
-		if Vector2(spot.x, spot.z).distance_to(at) > radius or absf(spot.x) > map.half_width or absf(spot.z) > map.half_width:
+		if Vector2(spot.x, spot.z).distance_to(at) > radius or not _inside(map, spot.x, spot.z):
 			continue
 		var slope := rad_to_deg(acos(clampf((hit["normal"] as Vector3).y, -1.0, 1.0)))
 		if slope >= recipe["slope_low"] and slope <= recipe["slope_high"]:
@@ -479,14 +521,19 @@ static func _pick_spot(map: SmartFellasMap, layer: Dictionary, recipe: Dictionar
 
 
 static func _ray_down(map: SmartFellasMap, x: float, z: float, finder: SurfaceFinder) -> Dictionary:
-	var top: float = maxf(finder.sand_height, finder.ceiling_measured_from()) + map.ceiling + RAY_HEADROOM
-	var bottom: float = finder.sand_height - 1.0 if finder.has_sand else -MapExporter.BELOW_THE_FLOOR - 1.0
+	var top: float
+	if map.play_area() == null:
+		# An older map's square measured its ceiling from the sand.
+		top = maxf(finder.sand_height, finder.ceiling_measured_from()) + map.area_ceiling() + RAY_HEADROOM
+	else:
+		top = maxf(finder.sand_height, map.area_ceiling()) + RAY_HEADROOM
+	var bottom: float = finder.sand_height - 1.0 if finder.has_sand else map.area_box().position.y - 1.0
 	return finder.find(Vector3(x, top, z), Vector3(x, bottom, z))
 
 
 static func _anywhere(map: SmartFellasMap, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
-	var reach: float = map.half_width * EDGE_SHARE
-	return _ray_down(map, rng.randf_range(-reach, reach), rng.randf_range(-reach, reach), finder)
+	var point := _random_in(map, _half(map) * EDGE_SHARE, rng)
+	return _ray_down(map, point.x, point.y, finder)
 
 
 ## How far the biggest piece this recipe can paint reaches from its middle, in metres.
@@ -505,10 +552,8 @@ static func _in_a_garden(map: SmartFellasMap, gardens: PackedVector3Array, rng: 
 	var garden := gardens[rng.randi_range(0, gardens.size() - 1)]
 	var angle := rng.randf() * TAU
 	var out := sqrt(rng.randf()) * garden.z
-	var reach: float = map.half_width * EDGE_SHARE
-	var x := clampf(garden.x + cos(angle) * out, -reach, reach)
-	var z := clampf(garden.y + sin(angle) * out, -reach, reach)
-	return _ray_down(map, x, z, finder)
+	var point := _clamp_in(map, Vector2(garden.x + cos(angle) * out, garden.y + sin(angle) * out), _half(map) * EDGE_SHARE)
+	return _ray_down(map, point.x, point.y, finder)
 
 
 static func _in_the_deep(map: SmartFellasMap, gardens: PackedVector3Array, rng: RandomNumberGenerator, finder: SurfaceFinder) -> Dictionary:
@@ -538,7 +583,7 @@ static func _on_the_pieces(map: SmartFellasMap, layer: Dictionary, recipe: Dicti
 		if hit.is_empty() or not Brush.lands_on(recipe, hit):
 			continue
 		var at: Vector3 = hit["at"]
-		if absf(at.x) > map.half_width or absf(at.z) > map.half_width:
+		if not _inside(map, at.x, at.z):
 			continue
 		var slope := rad_to_deg(acos(clampf((hit["normal"] as Vector3).y, -1.0, 1.0)))
 		if slope >= recipe["slope_low"] and slope <= recipe["slope_high"]:
@@ -565,7 +610,7 @@ static func _beside_a_rock(map: SmartFellasMap, rng: RandomNumberGenerator, find
 	var angle := rng.randf() * TAU
 	var x := middle.x + cos(angle) * out
 	var z := middle.z + sin(angle) * out
-	if absf(x) > map.half_width or absf(z) > map.half_width:
+	if not _inside(map, x, z):
 		return {}
 	var hit := _ray_down(map, x, z, finder)
 	return hit if _is_open_ground(hit, finder) else {}
@@ -605,7 +650,7 @@ static func _add_food(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNu
 	# At least as many as the game needs, on the smallest map.
 	var wanted := clampi(roundi(_area_of(map) / SQUARE_METRES_A_PATCH), MapExporter.FEWEST_PATCHES, MapExporter.MOST_PATCHES)
 	var patches := maxi(wanted - patches_held, 0)
-	var apart: float = map.half_width * PATCHES_APART
+	var apart: float = _even_half(map) * PATCHES_APART
 	for _patch in patches:
 		var hit := _spot_for_food(map, taken, apart, rng, finder, zones)
 		if not hit.is_empty() and _add_marker(map, "food_patch", hit["at"], hit["normal"], made, zones):
@@ -650,7 +695,8 @@ static func _add_creatures(map: SmartFellasMap, going: Array[Marker3D], rng: Ran
 ## of the map and the other's at the other, apart from each other and clear of what lies in wait.
 static func _add_spawns(map: SmartFellasMap, team: String, rng: RandomNumberGenerator, finder: SurfaceFinder, made: Array[Marker3D], zones: Array[Dictionary]) -> void:
 	var side := -1.0 if team == "spawn_octopus" else 1.0
-	var reach: float = map.half_width * EDGE_SHARE
+	var reach := _half(map) * EDGE_SHARE
+	var middle := _middle(map)
 	var lurking: Array[Vector3] = []
 	for kind: String in CREATURE_KINDS:
 		for marker in MarkerKinds.markers_of(map, kind):
@@ -659,14 +705,14 @@ static func _add_spawns(map: SmartFellasMap, team: String, rng: RandomNumberGene
 	for _try in MARKER_TRIES * SPAWNS_A_TEAM * 2:
 		if placed.size() >= SPAWNS_A_TEAM:
 			break
-		var x := side * rng.randf_range(reach * 0.5, reach)
-		var hit := _ray_down(map, x, rng.randf_range(-reach, reach), finder)
+		var x := middle.x + side * rng.randf_range(reach.x * 0.5, reach.x)
+		var hit := _ray_down(map, x, middle.y + rng.randf_range(-reach.y, reach.y), finder)
 		if hit.is_empty() or (hit["normal"] as Vector3).y < FLOOR_LIKE:
 			continue
 		var at: Vector3 = hit["at"]
 		if not finder.find(at + Vector3.UP * 0.05, at + Vector3.UP * ROOM_ABOVE).is_empty():
 			continue
-		if at.y + ROOM_ABOVE > finder.ceiling_measured_from() + map.ceiling:
+		if at.y + ROOM_ABOVE > _ceiling(map, finder):
 			continue
 		if placed.any(func(other: Vector3) -> bool: return other.distance_to(at) < SPAWNS_APART):
 			continue
@@ -679,12 +725,12 @@ static func _add_spawns(map: SmartFellasMap, team: String, rng: RandomNumberGene
 ## Open sand for a patch with room for its ring of food, away from others, or nothing if it finds none.
 ## The first half of its tries look in the open sand zones, if the map has any.
 static func _spot_for_food(map: SmartFellasMap, taken: Array[Vector3], apart: float, rng: RandomNumberGenerator, finder: SurfaceFinder, zones: Array[Dictionary]) -> Dictionary:
-	var reach: float = map.half_width - MapExporter.SPOT_RING - 0.1
+	var reach := (_half(map) - Vector2.ONE * (MapExporter.SPOT_RING + 0.1)).max(Vector2.ZERO)
 	var sands := zones.filter(func(zone: Dictionary) -> bool: return zone["kind"] == Zone.Kind.SAND)
 	for try in MARKER_TRIES:
-		var point := Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach))
+		var point := _random_in(map, reach, rng)
 		if not sands.is_empty() and try < MARKER_TRIES / 2:
-			point = Zone.point_in(sands[rng.randi_range(0, sands.size() - 1)], rng).clampf(-reach, reach)
+			point = _clamp_in(map, Zone.point_in(sands[rng.randi_range(0, sands.size() - 1)], rng), reach)
 		var hit := _ray_down(map, point.x, point.y, finder)
 		if not _is_open_ground(hit, finder) or not _ring_lies_on_ground(hit, finder):
 			continue

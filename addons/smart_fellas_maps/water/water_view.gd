@@ -384,10 +384,10 @@ func _material_for(from: BaseMaterial3D, is_seabed: bool) -> ShaderMaterial:
 	var tint := from.albedo_color.srgb_to_linear()
 	material.set_shader_parameter("perceptual_roughness", from.roughness)
 	if is_seabed:
-		var half_width: float = get_parent().half_width
+		var reach: float = get_parent().area_reach()
 		material.set_shader_parameter("albedo_tex", _picture("sand.png"))
 		material.set_shader_parameter("perceptual_roughness", 0.9)
-		material.set_shader_parameter("world_layout", Vector2(SAND_REPEATS_A_METRE, half_width + SEABED_BEYOND))
+		material.set_shader_parameter("world_layout", Vector2(SAND_REPEATS_A_METRE, reach + SEABED_BEYOND))
 	else:
 		material.set_shader_parameter("albedo_tex", from.albedo_texture)
 		material.set_shader_parameter("base_colour", tint)

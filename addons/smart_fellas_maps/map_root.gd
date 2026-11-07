@@ -19,23 +19,59 @@ const SeabedGrid := preload("seabed_grid.gd")
 
 ## The pieces on this map changed, whether by a brush, by undo or by hand.
 signal pieces_changed
-## The play area's half width or ceiling changed, by the panel, a handle, the Inspector or undo.
+## The play area moved or changed size, by the panel, a handle, the move tool, the Inspector or undo.
 signal area_changed
+
+## How far under the valley floor an older map's square reaches, in metres: the game's `BELOW_THE_FLOOR`.
+const BELOW_THE_FLOOR := 12.0
 
 ## What players call the map.
 @export var map_name := "New Map"
-## The playable area runs from minus this to plus this on X and Z, in metres.
-@export_range(10.0, 250.0) var half_width := 20.0:
+## A map from before the play area was a box (a PlayArea node) has a square: from minus this to plus this on
+## X and Z, in metres, from BELOW_THE_FLOOR under the valley floor up to `ceiling`. Fit to map makes it a box.
+@export_storage var half_width := 20.0:
 	set(value):
 		half_width = value
 		# The sculpted ground runs on flat past the area's edge, so it's drawn to it.
 		show_seabed()
 		_show_area()
-## The highest anyone can swim, in metres above the valley floor.
-@export_range(5.0, 100.0) var ceiling := 13.5:
+@export_storage var ceiling := 13.5:
 	set(value):
 		ceiling = value
 		_show_area()
+
+## The play area box's numbers, for the Map panel: where the middle of its floor is, and its size. They
+## change the PlayArea node, and a map without one has none to change.
+var area_x: float:
+	get:
+		return area_box().get_center().x
+	set(value):
+		_move_area(Vector3(value, area_floor, area_z))
+var area_z: float:
+	get:
+		return area_box().get_center().z
+	set(value):
+		_move_area(Vector3(area_x, area_floor, value))
+var area_floor: float:
+	get:
+		return area_box().position.y
+	set(value):
+		_move_area(Vector3(area_x, value, area_z))
+var area_width: float:
+	get:
+		return area_box().size.x
+	set(value):
+		_size_area(Vector3(value, area_height, area_depth))
+var area_height: float:
+	get:
+		return area_box().size.y
+	set(value):
+		_size_area(Vector3(area_width, value, area_depth))
+var area_depth: float:
+	get:
+		return area_box().size.z
+	set(value):
+		_size_area(Vector3(area_width, area_height, value))
 
 @export_group("Seabed")
 ## Whether the map has a seabed. With none, its pieces and models are the only floor, and the game catches
@@ -143,7 +179,7 @@ var _batches: Node3D
 ## a stroke redraws only what it changed.
 var _ground_shape := {}
 var _ground_grid: RefCounted
-var _ground_half_width := 0.0
+var _ground_reach := 0.0
 var _drawing_in_part := false
 
 
@@ -195,8 +231,8 @@ func show_seabed() -> void:
 	_ground_shape = {}
 	if grid == null:
 		return
-	_ground_shape = grid.shape(half_width)
-	_ground_half_width = half_width
+	_ground_reach = area_reach()
+	_ground_shape = grid.shape(_ground_reach)
 	_fill_every_ground()
 	_sculpted_sand.material_override = _water.material_for_sand()
 	_sculpted_rock.material_override = _water.material_for_rock(WaterView.ROCK_PICTURE)
@@ -233,7 +269,7 @@ func show_seabed_rock(rock: PackedByteArray) -> void:
 func _can_draw_in_part() -> bool:
 	if _sculpted_sand == null:
 		return false
-	return _ground_grid != null and _ground_half_width == half_width and _ground_grid.side == seabed_side and _ground_grid.reach == seabed_reach and seabed_heights.size() == seabed_side * seabed_side and seabed_rock.size() == (seabed_side - 1) * (seabed_side - 1)
+	return _ground_grid != null and _ground_reach == area_reach() and _ground_grid.side == seabed_side and _ground_grid.reach == seabed_reach and seabed_heights.size() == seabed_side * seabed_side and seabed_rock.size() == (seabed_side - 1) * (seabed_side - 1)
 
 
 func _fill_every_ground() -> void:
@@ -261,6 +297,67 @@ static func _fill_ground(ground: MeshInstance3D, shape: Dictionary, triangles: P
 func _show_area() -> void:
 	area_changed.emit()
 	update_gizmos()
+
+
+## The play area box, or null on a map from before it was one.
+func play_area() -> SmartFellasPlayArea:
+	for child in get_children():
+		if child is SmartFellasPlayArea:
+			return child
+	return null
+
+
+## Where players may go, in the map's own space: its PlayArea box, or an older map's square.
+func area_box() -> AABB:
+	var box := play_area()
+	if box != null:
+		return box.box()
+	return AABB(Vector3(-half_width, -BELOW_THE_FLOOR, -half_width), Vector3(half_width * 2.0, ceiling + BELOW_THE_FLOOR, half_width * 2.0))
+
+
+## The highest anyone can swim.
+func area_ceiling() -> float:
+	return area_box().end.y
+
+
+## The height swimming is measured up from, as the game's `PlayArea::base`: on a box, the seabed under its
+## middle, or its floor with no seabed; on an older square, the valley floor at 0.
+func area_base() -> float:
+	if play_area() == null:
+		return 0.0
+	var box := area_box()
+	if not has_seabed:
+		return box.position.y
+	var middle := box.get_center()
+	var grid: RefCounted = SeabedGrid.of(self)
+	var seabed := find_child("Seabed", true, true) as Node3D
+	var ground: float = grid.height_at(middle.x, middle.z) if grid != null else (seabed.global_position.y if seabed != null else box.position.y)
+	return clampf(ground, box.position.y, box.end.y)
+
+
+## How far the play area's farthest edge is from the middle of the map, on the flat.
+func area_reach() -> float:
+	var box := area_box()
+	return maxf(maxf(absf(box.position.x), absf(box.end.x)), maxf(absf(box.position.z), absf(box.end.z)))
+
+
+## The PlayArea box moved or changed size.
+func area_moved() -> void:
+	# The sculpted ground runs on flat past the area's edge, so it's drawn to it.
+	show_seabed()
+	_show_area()
+
+
+func _move_area(floor_middle: Vector3) -> void:
+	var box := play_area()
+	if box != null:
+		box.position = floor_middle
+
+
+func _size_area(size: Vector3) -> void:
+	var box := play_area()
+	if box != null:
+		box.size = size
 
 
 ## How many pieces the brush has painted on this map.

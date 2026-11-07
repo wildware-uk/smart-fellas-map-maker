@@ -178,15 +178,17 @@ func _grows_on(hit: Dictionary) -> bool:
 	if not lands_on(_recipe, hit):
 		return false
 	var at: Vector3 = hit["at"]
-	var half_width: float = _map.half_width
-	if absf(at.x) > half_width or absf(at.z) > half_width:
+	var area := _map.area_box()
+	if at.x < area.position.x or at.x > area.end.x or at.z < area.position.z or at.z > area.end.z:
 		return false
 	if keeps_out.is_valid() and keeps_out.call(at):
 		return false
 	var above_sand := at.y - _finder.ground_under(at)
 	if above_sand < _recipe["height_low"] or above_sand > _recipe["height_high"]:
 		return false
-	if at.y - _finder.ceiling_measured_from() > _map.ceiling:
+	# An older map's square measured its ceiling from the sand; a box's is where it is.
+	var ceiling := _map.area_ceiling() + (_finder.ceiling_measured_from() if _map.play_area() == null else 0.0)
+	if at.y > ceiling:
 		return false
 	var slope := rad_to_deg(acos(clampf((hit["normal"] as Vector3).y, -1.0, 1.0)))
 	return slope >= _recipe["slope_low"] and slope <= _recipe["slope_high"]

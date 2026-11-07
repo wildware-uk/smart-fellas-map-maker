@@ -281,9 +281,11 @@ func draw(overlay: Control, camera: Camera3D) -> void:
 
 
 func _draw_edge(overlay: Control, camera: Camera3D) -> void:
-	var half: float = _map.half_width
+	var area := _map.area_box()
+	var a := area.position
+	var b := area.end
 	var y: float = _surfaces().sand_height
-	var corners := [Vector3(-half, y, -half), Vector3(half, y, -half), Vector3(half, y, half), Vector3(-half, y, half)]
+	var corners := [Vector3(a.x, y, a.z), Vector3(b.x, y, a.z), Vector3(b.x, y, b.z), Vector3(a.x, y, b.z)]
 	for side in 4:
 		var line := PackedVector2Array()
 		for index in EDGE_POINTS + 1:

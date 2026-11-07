@@ -27,10 +27,15 @@ const PROBLEM_COLOUR := Color(1.0, 0.45, 0.4)
 const WARNING_COLOUR := Color(1.0, 0.75, 0.3)
 ## The most of the panel's height the problems and warnings take before they scroll on their own.
 const NOTES_SHARE := 0.3
-## Each number a map sets: its property, what a person calls it, its limits and its step.
+## Each number a map sets: its property, what a person calls it, its limits and its step. These are the
+## play area box's: where the middle of its floor is, and its size.
 const NUMBERS := [
-	["half_width", "Half width (m)", MapExporter.HALF_WIDTHS, 1.0],
-	["ceiling", "Highest swim (m)", MapExporter.CEILINGS, 0.5],
+	["area_x", "Play area middle, X (m)", Vector2(-MapExporter.SCENERY_REACH, MapExporter.SCENERY_REACH), 0.5],
+	["area_z", "Play area middle, Z (m)", Vector2(-MapExporter.SCENERY_REACH, MapExporter.SCENERY_REACH), 0.5],
+	["area_floor", "Floor height (m)", Vector2(-MapExporter.SCENERY_REACH, MapExporter.SCENERY_REACH), 0.5],
+	["area_width", "Width, X (m)", MapExporter.SIDES, 1.0],
+	["area_depth", "Depth, Z (m)", MapExporter.SIDES, 1.0],
+	["area_height", "Height (m)", MapExporter.HEIGHTS, 0.5],
 ]
 const PLAYER_NUMBERS := [
 	["fewest_players", "Fewest players", Vector2(2.0, 32.0), 1.0],
@@ -405,10 +410,10 @@ func _add_play_area(column: Control) -> void:
 	_show_area.button_pressed = _area_shown
 	_show_area.toggled.connect(func(on: bool) -> void: play_area_toggled.emit(on))
 	column.add_child(_show_area)
-	_label(column, "Click the area's outline in the 3D view, or select the map at the top of the Scene panel, then drag the dots on its edges and ceiling. It snaps to 1 m, or 5 m with Ctrl held. Markers outside it are outlined red, as the game refuses them, and so are pieces too far out for Export to take. Pieces wholly outside it are outlined amber: players can see them but never reach them.")
+	_label(column, "The play area is the box players swim in: the PlayArea node in the Scene panel. Click its outline in the 3D view to select it, move it with Godot's move tool, and drag the dots on its faces to size it. They snap to 1 m, or 5 m with Ctrl held. Scenery may stand anywhere outside it. Markers outside it are outlined red, as the game refuses them, and so are pieces too far out for Export to take. Pieces wholly outside it are outlined amber: players can see them but never reach them.")
 	var fit := Button.new()
 	fit.text = "Fit to map"
-	fit.tooltip_text = "Size the area to hold where players go, the markers, with %s m to spare round them and %s m over the tallest marker or piece wholly inside. Scenery outside never grows it." % [PlayArea.FIT_MARGIN, PlayArea.FIT_HEADROOM]
+	fit.tooltip_text = "Make the box hold where players go, the markers, with %s m to spare round them, its floor just under them and the ground, and %s m over the tallest marker, ground or piece wholly inside. Scenery outside never grows it. An older map's square becomes a box." % [PlayArea.FIT_MARGIN, PlayArea.FIT_HEADROOM]
 	fit.pressed.connect(_on_fit)
 	column.add_child(fit)
 	_fit_said = _label(column, "")
@@ -426,27 +431,32 @@ func _on_fit() -> void:
 	var map := _map()
 	if map == null:
 		return
-	var fitted := PlayArea.fit(map, PlayArea.gather(map))
+	var fitted := PlayArea.fit(map, PlayArea.gather(map), true)
 	_fit_said.visible = true
 	if fitted.is_empty():
 		_fit_said.text = "No markers yet, so there's nothing to fit: the area is fitted to where players go. Place spawns and food first, or tick them in Populate."
 		return
-	if is_equal_approx(map.half_width, fitted["half_width"]) and is_equal_approx(map.ceiling, fitted["ceiling"]):
-		_fit_said.text = "It fits already: %s m each way and %s m up." % [fitted["half_width"], fitted["ceiling"]]
+	var box: AABB = fitted["box"]
+	var words := "%s m across, %s m along and %s m high, from a floor at %s m" % [box.size.x, box.size.z, box.size.y, box.position.y]
+	if map.play_area() != null and map.area_box().is_equal_approx(box):
+		_fit_said.text = "It fits already: %s." % words
 		return
 	# The numbers follow by the map's area_changed, and the rest once the history changes.
 	PlayArea.apply_fit(map, fitted, undo)
-	_fit_said.text = "Fitted: %s m each way and %s m up." % [fitted["half_width"], fitted["ceiling"]]
+	_fit_said.text = "Fitted: %s." % words
 
 
-## Makes the half width and ceiling say what the map says, as a handle drags them.
+## Makes the play area's numbers say what the map's box says, as a handle or the move tool drags it. An
+## older map's square has no box to change until Fit to map makes one.
 func show_area() -> void:
 	var map := _map()
 	if map == null:
 		return
 	_showing = true
+	var boxed := map.play_area() != null
 	for row in NUMBERS:
 		_numbers[row[0]].value = map.get(row[0])
+		_numbers[row[0]].editable = boxed
 	_showing = false
 
 
@@ -526,6 +536,7 @@ func show_map() -> void:
 	_populate_surfaces.select(maxi(Recipes.SURFACES.find(map.populate_surfaces), 0))
 	_show_models(map)
 	_showing = false
+	show_area()
 	var rules := MapExporter.read_rules(map)
 	var sizes := MapExporter.team_sizes(map, rules)
 	_counts.text = "%d octopus and %d diver spawn points, %d food patches. Up to %d divers and %d octopuses.\n%d fish, %d anglerfish spots, %d jellyfish in %d groups, %d lantern schools, %d goblin route points.\n%d wrasse spots, %d stingray stops, %d eel holes, %d groper holes.\nTrigger zones for the map's script: %d." % [

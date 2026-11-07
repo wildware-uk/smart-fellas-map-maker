@@ -22,6 +22,9 @@ const TIE := 0.001
 const CLEAR_ABOVE := 0.3
 ## A spot on a surface counts as open if a ray down at it lands within this of it.
 const LANDS_WITHIN := 0.02
+## The most surfaces lowest_top passes through, and how far past each it starts again.
+const MOST_LAYERS := 32
+const PAST_A_SURFACE := 0.01
 
 var has_sand := false
 ## Whether a flat floor of rock counts as open ground, for what grows on sand, food and fish: Populate says
@@ -227,17 +230,45 @@ static func _cell_of(at: Vector3) -> Vector2i:
 ## that it's on, or null. Empty if the ray meets nothing, or if it starts inside a piece: nothing grows in
 ## there. The ray passes through `ignoring`, and anything in it.
 func find(from: Vector3, to: Vector3, ignoring: Node3D = null) -> Dictionary:
+	var hit := _nearest(from, to, ignoring)
+	if hit.get("inside", false):
+		return {}
+	hit.erase("inside")
+	return hit
+
+
+## The lowest height at which the ray from `from` to `to` meets the outside of a surface, passing on through
+## each one it meets, or INF if it meets none: straight down, the lowest top under everything over it.
+func lowest_top(from: Vector3, to: Vector3) -> float:
+	var lowest := INF
+	var way := (to - from).normalized()
+	for layer in MOST_LAYERS:
+		var hit := _nearest(from, to, null)
+		if hit.is_empty():
+			break
+		var at: Vector3 = hit["at"]
+		if not hit["inside"]:
+			lowest = minf(lowest, at.y)
+		from = at + way * PAST_A_SURFACE
+		if (to - from).dot(way) <= 0.0:
+			break
+	return lowest
+
+
+## What the ray from `from` to `to` meets first, as find says it, with "inside" true if that is the inside of
+## a piece the ray started in, and empty if it meets nothing.
+func _nearest(from: Vector3, to: Vector3, ignoring: Node3D) -> Dictionary:
 	var best := {}
 	var nearest := INF
 	if _grid != null:
 		var at: Vector3 = _grid.first_hit(from, to)
 		if at != Vector3.INF:
 			nearest = from.distance_to(at)
-			best = {"at": at, "normal": _grid.normal_at(at.x, at.z), "on": "rock" if _grid.is_rock_at(at.x, at.z) else "sand", "seabed": true, "node": null}
+			best = {"at": at, "normal": _grid.normal_at(at.x, at.z), "on": "rock" if _grid.is_rock_at(at.x, at.z) else "sand", "seabed": true, "node": null, "inside": false}
 	elif has_sand and from.y > sand_height and to.y < sand_height:
 		var along := (from.y - sand_height) / (from.y - to.y)
 		nearest = along * from.distance_to(to)
-		best = {"at": from.lerp(to, along), "normal": Vector3.UP, "on": "sand", "seabed": true, "node": null}
+		best = {"at": from.lerp(to, along), "normal": Vector3.UP, "on": "sand", "seabed": true, "node": null, "inside": false}
 	for index in _pieces_near(from, to):
 		if not _boxes[index].intersects_segment(from, to):
 			continue
@@ -253,7 +284,7 @@ func find(from: Vector3, to: Vector3, ignoring: Node3D = null) -> Dictionary:
 		# From inside, a tie goes to the piece: a rock's flat foot lies on the sand.
 		if distance < nearest or (from_inside and distance <= nearest + TIE):
 			nearest = distance
-			best = {} if from_inside else {"at": at, "normal": outward.normalized(), "on": _grounds[index], "seabed": false, "node": _nodes[index]}
+			best = {"at": at, "normal": outward.normalized(), "on": _grounds[index], "seabed": false, "node": _nodes[index], "inside": from_inside}
 	return best
 
 

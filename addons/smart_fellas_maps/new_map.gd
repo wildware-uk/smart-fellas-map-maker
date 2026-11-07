@@ -6,6 +6,7 @@ extends RefCounted
 const BLANK := """[gd_scene format=3]
 
 [ext_resource type="Script" path="res://addons/smart_fellas_maps/map_root.gd" id="1_root"]
+[ext_resource type="Script" path="res://addons/smart_fellas_maps/play_area_box.gd" id="2_area"]
 
 [sub_resource type="StandardMaterial3D" id="sand"]
 albedo_color = Color(0.76, 0.69, 0.52, 1)
@@ -17,8 +18,11 @@ size = Vector2(240, 240)
 [node name="NewMap{number}" type="Node3D"]
 script = ExtResource("1_root")
 map_name = "New Map {number}"
-half_width = 30.0
-ceiling = 13.5
+
+[node name="PlayArea" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -12, 0)
+script = ExtResource("2_area")
+size = Vector3(60, 25.5, 60)
 
 [node name="Seabed" type="MeshInstance3D" parent="."]
 mesh = SubResource("floor")

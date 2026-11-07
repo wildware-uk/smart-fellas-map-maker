@@ -20,6 +20,9 @@ const SCULPTED_FORMAT := 3
 const NO_SEABED_FORMAT := 5
 ## The game's MODELS_FORMAT, for a map with models of its own.
 const MODELS_FORMAT := 4
+## The game's format for a map whose play area is a box placed anywhere (a PlayArea node), and otherwise as
+## NO_SEABED_FORMAT.
+const BOX_FORMAT := 6
 ## Where a map's own models go in its package.
 const ASSETS_FOLDER := "assets"
 ## The end of a map package's file name: Smart Fellas Map.
@@ -106,7 +109,9 @@ const SCALES := Vector2(0.1, 10.0)
 ## spawn points and patches, and on who may play.
 const HALF_WIDTHS := Vector2(10.0, 250.0)
 const CEILINGS := Vector2(5.0, 100.0)
-const SEABED_BEYOND := 60.0
+## A play area box's width or depth, and its height, as the game's SIDES and HEIGHTS.
+const SIDES := Vector2(20.0, 500.0)
+const HEIGHTS := Vector2(5.0, 120.0)
 const SCENERY_REACH := 4000.0
 const BELOW_THE_FLOOR := 12.0
 ## How far inside the map's reach Export moves a part it cuts that would stand just past it, in metres.
@@ -1099,15 +1104,14 @@ static func read_rules(root: SmartFellasMap) -> Scene:
 	var bad_name := name_problem(root.map_name)
 	if not bad_name.is_empty():
 		scene.problems.append(bad_name)
-	_check_range("The map's half width", root.half_width, HALF_WIDTHS, scene)
-	_check_range("The map's ceiling", root.ceiling, CEILINGS, scene)
+	_check_area(root, scene)
 	_read_children(root, scene)
 	if not root.has_seabed:
 		scene.has_seabed = false
 	elif not scene.has_seabed:
 		scene.problems.append("The map has no seabed. Add a mesh called Seabed at the height of the sand, or untick Seabed in the Map panel for a map with none.")
-	elif root.seabed_side == 0 and (scene.seabed_height < -BELOW_THE_FLOOR or scene.seabed_height > root.ceiling):
-		scene.problems.append("The seabed is at a height of %s. It must be from %s to the map's ceiling, %s." % [scene.seabed_height, -BELOW_THE_FLOOR, root.ceiling])
+	elif root.seabed_side == 0 and (scene.seabed_height < root.area_box().position.y or scene.seabed_height > root.area_ceiling()):
+		scene.problems.append("The seabed is at a height of %s. It must be from the play area's floor, %s, to its ceiling, %s." % [scene.seabed_height, root.area_box().position.y, root.area_ceiling()])
 	_check_sculpted(root, scene)
 	for team in [["octopus", scene.octopus_spawns], ["diver", scene.diver_spawns]]:
 		if team[1].is_empty():
@@ -1125,6 +1129,35 @@ static func read_rules(root: SmartFellasMap) -> Scene:
 	return scene
 
 
+## The play area is one the game takes: an older map's square, or a box of a size it plays in, near enough
+## the middle of the map, as the game's check_play_area.
+static func _check_area(root: SmartFellasMap, scene: Scene) -> void:
+	if root.play_area() == null:
+		_check_range("The map's half width", root.half_width, HALF_WIDTHS, scene)
+		_check_range("The map's ceiling", root.ceiling, CEILINGS, scene)
+		return
+	var box := root.area_box()
+	if not (box.position.is_finite() and box.size.is_finite()):
+		scene.problems.append("The play area has a number that isn't a real number. Press Fit to map.")
+		return
+	for corner in [box.position, box.end]:
+		if not scenery_kept(corner):
+			scene.problems.append("The play area reaches past %d km from the middle of the map. Move it in." % roundi(SCENERY_REACH / 1000.0))
+			break
+	_check_range("The play area's width (X)", box.size.x, SIDES, scene)
+	_check_range("The play area's depth (Z)", box.size.z, SIDES, scene)
+	_check_range("The play area's height", box.size.y, HEIGHTS, scene)
+
+
+## Where the play area runs, in words for a problem.
+static func area_words(root: SmartFellasMap) -> String:
+	var box := root.area_box()
+	var words := PackedStringArray()
+	for value in [box.position.x, box.end.x, box.position.y, box.end.y, box.position.z, box.end.z]:
+		words.append(str(snappedf(value, 0.1)))
+	return "It runs from %s to %s across (X), %s to %s up and %s to %s along (Z)." % Array(words)
+
+
 ## The game holds a sculpted seabed to these too.
 static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
 	if not root.has_seabed or (root.seabed_side == 0 and root.seabed_heights.is_empty()):
@@ -1133,19 +1166,31 @@ static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
 	if side < 2 or side > MOST_SEABED_SIDE or root.seabed_heights.size() != side * side or root.seabed_rock.size() != (side - 1) * (side - 1):
 		scene.problems.append("The sculpted seabed's numbers doesn't add up: %d points a side and %d heights. Press Flatten in the Map panel." % [side, root.seabed_heights.size()])
 		return
-	if not (root.seabed_reach >= 1.0 and root.seabed_reach <= root.half_width + SEABED_BEYOND):
-		scene.problems.append("The sculpted seabed reaches %s m from the middle. It must be from 1 to %s." % [root.seabed_reach, root.half_width + SEABED_BEYOND])
+	# The sculpted ground is scenery past the play area, so it may reach as far as anything may stand (#245).
+	if not (root.seabed_reach >= 1.0 and root.seabed_reach <= SCENERY_REACH):
+		scene.problems.append("The sculpted seabed reaches %s m from the middle. It must be from 1 to %s." % [root.seabed_reach, SCENERY_REACH])
+	var spacing: float = root.seabed_reach * 2.0 / (side - 1)
+	# Inside the play area the ground stays between its floor and ceiling, as the game's check_sculpted;
+	# outside, it's scenery, and only as far as anything may stand.
+	var box := root.area_box()
 	var highest := -INF
 	var lowest := INF
-	for height in root.seabed_heights:
+	for index in side * side:
+		var height: float = root.seabed_heights[index]
 		if is_nan(height) or is_inf(height):
 			scene.problems.append("The sculpted seabed has a height that isn't a real number. Press Flatten in the Map panel.")
 			return
-		highest = maxf(highest, height)
-		lowest = minf(lowest, height)
-	if highest > root.ceiling or lowest < -BELOW_THE_FLOOR:
-		scene.problems.append("The sculpted seabed reaches a height of %.1f and %.1f. It must stay from %s to the map's ceiling, %s. Raise the ceiling, or lower the ground." % [lowest, highest, -BELOW_THE_FLOOR, root.ceiling])
-	var spacing: float = root.seabed_reach * 2.0 / (side - 1)
+		if absf(height) > SCENERY_REACH:
+			scene.problems.append("The sculpted seabed has a height of %.1f. It must be within %d km of the middle of the map." % [height, roundi(SCENERY_REACH / 1000.0)])
+			return
+		var x: float = -root.seabed_reach + (index % side) * spacing
+		var z: float = -root.seabed_reach + (index / side) * spacing
+		if x >= box.position.x and x <= box.end.x and z >= box.position.z and z <= box.end.z:
+			highest = maxf(highest, height)
+			lowest = minf(lowest, height)
+	var floor_height := box.position.y
+	if highest > root.area_ceiling() or lowest < floor_height:
+		scene.problems.append("Inside the play area, the sculpted seabed reaches a height of %.1f and %.1f. It must stay from the play area's floor, %s, to its ceiling, %s. Move the floor or ceiling, or the ground." % [lowest, highest, floor_height, root.area_ceiling()])
 	if spacing < CLOSEST_SEABED_POINTS:
 		scene.problems.append("The sculpted seabed's points are %.2f m apart. They must be at least %s m apart. Press Flatten in the Map panel." % [spacing, CLOSEST_SEABED_POINTS])
 		return
@@ -1166,7 +1211,7 @@ static func _warn_of_spawns_over_nothing(root: SmartFellasMap, scene: Scene) -> 
 		return
 	for spawn in scene.octopus_spawns + scene.diver_spawns:
 		var at: Vector3 = spawn["at"]
-		if scene.finder.find(at, Vector3(at.x, -BELOW_THE_FLOOR - 1.0, at.z)).is_empty():
+		if scene.finder.find(at, Vector3(at.x, root.area_box().position.y - 1.0, at.z)).is_empty():
 			scene.warnings.append({
 				"words": "%s has nothing under it, and the map has no seabed: anyone starting there falls to the bottom of the map. Move it over a piece." % spawn["node"].name,
 				"node": spawn["node"],
@@ -1273,9 +1318,10 @@ static func _warn_of_close_spawns(root: SmartFellasMap, scene: Scene) -> void:
 			var at_octopus: Vector3 = octopus["at"]
 			var at_diver: Vector3 = diver["at"]
 			var apart := Vector2(at_octopus.x, at_octopus.z).distance_to(Vector2(at_diver.x, at_diver.z))
-			if apart < root.half_width:
+			var box := root.area_box()
+			if apart < minf(box.size.x, box.size.z) * 0.5:
 				scene.warnings.append({
-					"words": "The teams start close: %s and %s are %.0f m apart, under half the map's width." % [octopus["node"].name, diver["node"].name, apart],
+					"words": "The teams start close: %s and %s are %.0f m apart, under half the play area's width." % [octopus["node"].name, diver["node"].name, apart],
 					"node": octopus["node"],
 				})
 				return
@@ -1452,7 +1498,7 @@ static func _how_far_under_the_ground(marker: Marker3D) -> float:
 	var root := _root_of(marker)
 	var at := marker.global_position
 	if not root.has_seabed:
-		return -BELOW_THE_FLOOR - at.y
+		return root.area_box().position.y - at.y
 	var grid: RefCounted = SeabedGrid.of(root)
 	var seabed := root.find_child("Seabed", true, true) as Node3D
 	var flat: float = seabed.global_position.y if seabed != null else 0.0
@@ -1472,7 +1518,7 @@ static func _check_food_spots_in_the_map(marker: Marker3D, root: SmartFellasMap,
 	for index in SPOTS_IN_A_PATCH:
 		var spot := _food_spot(patch, index)
 		if not in_the_map(root, spot):
-			scene.problem_on(marker, "%s is too near the map's edge: its food would grow at (%.1f, %.1f, %.1f), and the map reaches %s m each way from the middle and %s m up. Move it in by %s m." % [marker.name, spot.x, spot.y, spot.z, root.half_width, root.ceiling, SPOT_RING])
+			scene.problem_on(marker, "%s is too near the play area's edge: its food would grow at (%.1f, %.1f, %.1f), outside it. %s Move it in by %s m." % [marker.name, spot.x, spot.y, spot.z, area_words(root), SPOT_RING])
 			return
 
 
@@ -1490,7 +1536,7 @@ static func _check_in_the_map(marker: Marker3D, root: SmartFellasMap, scene: Sce
 		scene.problem_on(marker, "%s has a number that isn't a real number. Delete it and drop in another." % marker.name)
 		return false
 	elif not in_the_map(root, at):
-		scene.problem_on(marker, "%s is at (%.1f, %.1f, %.1f), outside the map. It reaches %s m each way from the middle and %s m up." % [marker.name, at.x, at.y, at.z, root.half_width, root.ceiling])
+		scene.problem_on(marker, "%s is at (%.1f, %.1f, %.1f), outside the map's play area. %s" % [marker.name, at.x, at.y, at.z, area_words(root)])
 		return false
 	return true
 
@@ -2208,9 +2254,10 @@ static func length_set_right(bytes: PackedByteArray) -> PackedByteArray:
 
 
 ## Whether the game takes a marker, a food spot or a trigger zone's middle at `at` in `root`'s map: inside its
-## edges, from the bottom of its walls up to its ceiling. The game's `Area::holds` in `src/map/check.rs`.
+## play area, edges, floor and ceiling included. The game's `PlayArea::contains` in `src/map/play_area.rs`.
 static func in_the_map(root: SmartFellasMap, at: Vector3) -> bool:
-	return absf(at.x) <= root.half_width and absf(at.z) <= root.half_width and at.y >= -BELOW_THE_FLOOR and at.y <= root.ceiling
+	var box := root.area_box()
+	return at.x >= box.position.x and at.x <= box.end.x and at.y >= box.position.y and at.y <= box.end.y and at.z >= box.position.z and at.z <= box.end.z
 
 
 ## Whether the game takes scenery (a piece of the kit or of the map's own models, a copy of a scattered mesh)
@@ -2523,7 +2570,8 @@ static func _check_triggers(root: SmartFellasMap, scene: Scene) -> void:
 	if scene.triggers.size() > MOST_TRIGGERS:
 		scene.problems.append("The map has %d trigger zones, and the most it can have is %d. Remove some." % [scene.triggers.size(), MOST_TRIGGERS])
 		return
-	var widest := maxf(root.half_width, root.ceiling) * 2.0
+	var box := root.area_box()
+	var widest := maxf(maxf(box.size.x, box.size.z) * 0.5, root.area_ceiling() - root.area_base()) * 2.0
 	var seen := {}
 	for trigger in scene.triggers:
 		var zone: Node3D = trigger["node"]
@@ -2540,7 +2588,7 @@ static func _check_triggers(root: SmartFellasMap, scene: Scene) -> void:
 		elif zone.is_turned():
 			scene.problem_on(zone, "%s is turned. The game's trigger zones stand upright, lined up with the map: set its rotation to 0 and size it with the dots on its sides." % zone.name)
 		elif not in_the_map(root, at):
-			scene.problem_on(zone, "%s has its middle at (%.1f, %.1f, %.1f), outside the map. It reaches %s m each way from the middle and %s m up." % [zone.name, at.x, at.y, at.z, root.half_width, root.ceiling])
+			scene.problem_on(zone, "%s has its middle at (%.1f, %.1f, %.1f), outside the map's play area. %s" % [zone.name, at.x, at.y, at.z, area_words(root)])
 		elif reach.x <= 0.0 or reach.y <= 0.0 or reach.z <= 0.0 or reach.x > widest or reach.y > widest or reach.z > widest:
 			scene.problem_on(zone, "%s reaches (%.1f, %.1f, %.1f) m from its middle. It must reach more than 0 and at most %s m each way, as wide as the map: set its scale back to 1 and size it with the dots on its sides." % [zone.name, reach.x, reach.y, reach.z, widest])
 
@@ -2869,11 +2917,13 @@ static func _food_lines(patches: Array[Dictionary], grid: RefCounted, finder: Re
 
 ## The heights the shark may swim at. On flat sand, one does. Over sculpted hills it has others to try.
 static func _shark_heights(root: SmartFellasMap) -> String:
+	var base := root.area_base()
+	var up := root.area_ceiling() - base
 	if root.seabed_side == 0 and root.has_seabed:
-		return _number(root.ceiling * 0.6)
+		return _number(base + up * 0.6)
 	var heights := PackedStringArray()
 	for share in [0.6, 0.75, 0.85, 0.45]:
-		heights.append(_number(root.ceiling * share))
+		heights.append(_number(base + up * share))
 	return ", ".join(heights)
 
 
@@ -2987,8 +3037,14 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	var soft := _soft_models_text(scene)
 	if not root.has_seabed or not soft.is_empty():
 		format = NO_SEABED_FORMAT
+	if root.play_area() != null:
+		format = BOX_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]
-	text += "    size: (half_width: %s, ceiling: %s),\n" % [_number(root.half_width), _number(root.ceiling)]
+	if root.play_area() != null:
+		var area := root.area_box()
+		text += "    area: (min: %s, max: %s),\n" % [_xyz(area.position), _xyz(area.end)]
+	else:
+		text += "    size: (half_width: %s, ceiling: %s),\n" % [_number(root.half_width), _number(root.ceiling)]
 	text += "    seabed: %s,\n" % _seabed_text(root, scene)
 	text += "    pieces: [\n%s    ],\n" % _piece_lines(scene.pieces)
 	text += "    spawns: (\n        octopus: [\n%s        ],\n        diver: [\n%s        ],\n    ),\n" % [
@@ -3000,11 +3056,12 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += "    fish: [%s],\n    triggers: [%s],\n    hunters: %s,\n    clownfish: %s,\n" % [_fish_lines(scene), _trigger_lines(scene), _switch(root.hunters), _switch(root.clownfish)]
 	text += "    players: (fewest: %d, most: %d, max_divers: %d, max_octopuses: %d),\n" % [root.fewest_players, divers + octopuses, divers, octopuses]
 	text += "    far_side: 0.0,\n"
-	var widest: float = root.half_width * 0.6
+	var box := root.area_box()
+	var widest: float = minf(box.size.x, box.size.z) * 0.5 * 0.6
 	text += "    shark: (widest: %s, narrowest: %s, points: 8, heights: [%s], room: 1.7),\n" % [
 		_number(widest), _number(widest * 0.5), _shark_heights(root)
 	]
-	var survey := maxf(root.half_width * 2.0 / 32.0, 2.0)
+	var survey := maxf(maxf(box.size.x, box.size.z) / 32.0, 2.0)
 	text += "    rock_survey_step: %s,\n    small_fish_share: 0.35,\n" % _number(survey)
 	text += WaterLook.section_text(root.water_depth, root.water_overrides)
 	text += _life_text(root)

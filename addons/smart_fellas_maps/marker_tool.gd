@@ -101,8 +101,9 @@ func _drop_at(hit: Dictionary) -> void:
 		said.emit("There's no seabed, rock or model under the mouse to drop it on.")
 		return
 	var at: Vector3 = hit["at"]
-	if absf(at.x) > map.half_width or absf(at.z) > map.half_width:
-		said.emit("That's outside the map. It reaches %s m each way from the middle." % map.half_width)
+	var area: AABB = map.area_box()
+	if at.x < area.position.x or at.x > area.end.x or at.z < area.position.z or at.z > area.end.z:
+		said.emit("That's outside the play area. Drop it inside the blue box, or move the box.")
 		return
 	_last_dropped_at = at
 	var dropped: Node3D

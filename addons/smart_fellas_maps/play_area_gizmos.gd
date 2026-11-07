@@ -1,10 +1,10 @@
 @tool
 extends EditorNode3DGizmoPlugin
-## Draws the map's play area in the 3D view: faint walls at its edges, a ceiling, and a clear outline on the
-## floor, with handles on the edges and the ceiling that resize it as they're dragged. Markers outside it are
-## outlined red, as the game refuses them, and so are pieces too far out for Export to take; pieces wholly
-## outside it, which players can see but never reach, are outlined amber. It lives only in the editor:
-## Export and the game never see it.
+## Draws the map's play area in the 3D view: faint walls at its sides, a ceiling, and a clear outline, with a
+## handle on each face of a PlayArea box that moves that face as it's dragged. An older map's square, with no
+## box, is drawn on its sand with no handles. Markers outside it are outlined red, as the game refuses them,
+## and so are pieces too far out for Export to take; pieces wholly outside it, which players can see but
+## never reach, are outlined amber. Only the outline lives here: Export writes the box itself.
 
 const PlayArea := preload("play_area.gd")
 
@@ -66,7 +66,7 @@ func _get_gizmo_name() -> String:
 
 
 func _has_gizmo(node: Node3D) -> bool:
-	return node is SmartFellasMap
+	return node is SmartFellasPlayArea or (node is SmartFellasMap and node.play_area() == null)
 
 
 ## Something in the map moved, came or went: gather it again at the next draw.
@@ -76,13 +76,23 @@ func forget() -> void:
 
 func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	gizmo.clear()
-	var map := gizmo.get_node_3d() as SmartFellasMap
-	if not shown or map == null or not map.is_inside_tree():
+	var node := gizmo.get_node_3d()
+	var box := node as SmartFellasPlayArea
+	var map := (node.get_parent() if box != null else node) as SmartFellasMap
+	if not shown or map == null or not node.is_inside_tree() or (box == null and map.play_area() != null):
 		return
-	var low := PlayArea.floor_height(map)
-	var half: float = map.half_width
-	var top: float = map.ceiling
-	var corners := [Vector3(-half, 0.0, -half), Vector3(half, 0.0, -half), Vector3(half, 0.0, half), Vector3(-half, 0.0, half)]
+	# Drawn in the node's own space: a box's from the middle of its floor, an older square's from the map's.
+	var area := map.area_box()
+	var low := area.position.y
+	if box != null:
+		area.position -= box.position
+		low = area.position.y
+	else:
+		low = PlayArea.floor_height(map)
+	var top := area.end.y
+	var a := area.position
+	var b := area.end
+	var corners := [Vector3(a.x, 0.0, a.z), Vector3(b.x, 0.0, a.z), Vector3(b.x, 0.0, b.z), Vector3(a.x, 0.0, b.z)]
 	# From the floor up: drawn over everything, walls below the sand would show through it.
 	gizmo.add_mesh(_walls(corners, low, top), get_material("walls", gizmo))
 	gizmo.add_mesh(_ceiling(corners, top), get_material("ceiling", gizmo))
@@ -96,23 +106,24 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 		lines.append(here + Vector3.UP * low)
 		lines.append(here + Vector3.UP * top)
 	gizmo.add_lines(lines, get_material("outline", gizmo))
-	# Clicking the outline selects the map, which shows the handles.
+	# Clicking the outline selects the box, which shows the handles.
 	gizmo.add_collision_segments(lines)
-	gizmo.add_handles(PlayArea.handle_points(map), get_material("handles", gizmo), [])
-	_outline_what_is_outside(gizmo, map)
+	if box != null:
+		gizmo.add_handles(PlayArea.handle_points(AABB(Vector3(a.x, low, a.z), Vector3(b.x - a.x, top - low, b.z - a.z))), get_material("handles", gizmo), [])
+	_outline_what_is_outside(gizmo, map, node, low, top)
 
 
-func _outline_what_is_outside(gizmo: EditorNode3DGizmo, map: SmartFellasMap) -> void:
+func _outline_what_is_outside(gizmo: EditorNode3DGizmo, map: SmartFellasMap, node: Node3D, low: float, top: float) -> void:
 	if _gathered.is_empty():
 		_gathered = PlayArea.gather(map)
 	var out := PlayArea.outside(map, _gathered)
-	var into_map := map.global_transform.affine_inverse()
+	var into_map := node.global_transform.affine_inverse()
 	var refused := PackedVector3Array()
 	for marker: Node3D in out["markers"]:
 		if is_instance_valid(marker):
 			var at := into_map * marker.global_position
 			refused.append_array(_box_lines(AABB(at - Vector3.ONE * MARKER_OUTLINE, Vector3.ONE * MARKER_OUTLINE * 2.0)))
-			refused.append_array([Vector3(at.x, PlayArea.floor_height(map), at.z), Vector3(at.x, maxf(map.ceiling, at.y), at.z)])
+			refused.append_array([Vector3(at.x, minf(low, at.y), at.z), Vector3(at.x, maxf(top, at.y), at.z)])
 	refused.append_array(_boxes_of(out["far"], into_map))
 	if not refused.is_empty():
 		gizmo.add_lines(refused, get_material("refused", gizmo))
@@ -170,23 +181,23 @@ static func _box_lines(box: AABB) -> PackedVector3Array:
 
 
 func _get_handle_name(_gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool) -> String:
-	return "Highest swim" if handle_id == PlayArea.Handle.CEILING else "Half width"
+	return PlayArea.HANDLE_NAMES[handle_id]
 
 
-func _get_handle_value(gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool) -> Variant:
-	return gizmo.get_node_3d().get(PlayArea.property_of(handle_id))
+func _get_handle_value(gizmo: EditorNode3DGizmo, _handle_id: int, _secondary: bool) -> Variant:
+	return (gizmo.get_node_3d() as SmartFellasPlayArea).box()
 
 
 func _set_handle(gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool, camera: Camera3D, screen_pos: Vector2) -> void:
-	var map := gizmo.get_node_3d() as SmartFellasMap
-	var into_map := map.global_transform.affine_inverse()
+	var box := gizmo.get_node_3d() as SmartFellasPlayArea
+	var parent := box.get_parent() as Node3D
+	var into_map := parent.global_transform.affine_inverse()
 	var from := into_map * camera.project_ray_origin(screen_pos)
 	var toward := (into_map.basis * camera.project_ray_normal(screen_pos)).normalized()
-	var value := PlayArea.dragged_handle(map, handle_id, from, toward, Input.is_key_pressed(KEY_CTRL))
-	var key := PlayArea.property_of(handle_id)
-	if map.get(key) != value:
-		map.set(key, value)
+	var dragged := PlayArea.dragged_box(box.box(), handle_id, from, toward, Input.is_key_pressed(KEY_CTRL))
+	if dragged != box.box():
+		box.set_box(dragged)
 
 
-func _commit_handle(gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool, restore: Variant, cancel: bool) -> void:
-	PlayArea.let_go(gizmo.get_node_3d() as SmartFellasMap, handle_id, restore, cancel, undo)
+func _commit_handle(gizmo: EditorNode3DGizmo, _handle_id: int, _secondary: bool, restore: Variant, cancel: bool) -> void:
+	PlayArea.let_go(gizmo.get_node_3d() as SmartFellasPlayArea, restore, cancel, undo)

@@ -156,8 +156,9 @@ func begin_stroke() -> void:
 func _make_the_grid() -> void:
 	var seabed := map.find_child("Seabed", true, true) as Node3D
 	var height := seabed.global_position.y if seabed != null else 0.0
-	var side := SeabedGrid.side_for(map.half_width)
-	map.seabed_reach = map.half_width
+	var reach: float = map.area_reach()
+	var side := SeabedGrid.side_for(reach)
+	map.seabed_reach = reach
 	map.seabed_side = side
 	var heights := PackedFloat32Array()
 	heights.resize(side * side)
@@ -180,8 +181,8 @@ func work_at(at: Vector3, seconds: float) -> void:
 	var side: int = _grid.side
 	var heights: PackedFloat32Array = _grid.heights
 	var before := heights.duplicate() if mode == Mode.SMOOTH else PackedFloat32Array()
-	var top: float = map.ceiling - ROOM_UNDER_THE_CEILING
-	var bottom: float = -MapExporter.BELOW_THE_FLOOR
+	var top: float = map.area_ceiling() - ROOM_UNDER_THE_CEILING
+	var bottom: float = map.area_box().position.y
 	for row in range(low.y, high.y + 1):
 		for column in range(low.x, high.x + 1):
 			var point: Vector3 = _grid.point_at(column, row)

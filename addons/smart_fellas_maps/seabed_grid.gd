@@ -52,9 +52,9 @@ static func from_numbers(reach_given: float, side_given: int, heights_given: Pac
 	return grid
 
 
-## How many points a new grid has along each side, for a map this wide.
-static func side_for(half_width: float) -> int:
-	return clampi(roundi(half_width * 2.0 / SPACING) + 1, FEWEST_A_SIDE, MOST_A_SIDE)
+## How many points a new grid has along each side, for a grid reaching this far from the middle.
+static func side_for(reach: float) -> int:
+	return clampi(roundi(reach * 2.0 / SPACING) + 1, FEWEST_A_SIDE, MOST_A_SIDE)
 
 
 func measure() -> void:
@@ -230,8 +230,9 @@ func _refine(from: Vector3, to: Vector3, above: float, below: float) -> Vector3:
 
 ## The meshes' numbers: {"points", "normals", "pictures", "sand", "rock", "moss"}, where the last three are
 ## lists of triangles. The game's SeabedShape::of does the same, though its points may come in another order.
-func shape(half_width: float) -> Dictionary:
-	var outer := maxf(half_width + BEYOND, reach + 1.0)
+## `area_reach` is how far the play area's farthest edge is from the middle of the map.
+func shape(area_reach: float) -> Dictionary:
+	var outer := maxf(area_reach + BEYOND, reach + 1.0)
 	var wide := side + 2
 	var points := PackedVector3Array()
 	var normals := PackedVector3Array()

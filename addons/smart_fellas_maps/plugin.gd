@@ -411,6 +411,9 @@ func _redraw_play_area() -> void:
 	_play_area.forget()
 	if _map != null and is_instance_valid(_map):
 		_map.update_gizmos()
+		var box := _map.play_area()
+		if box != null:
+			box.update_gizmos()
 
 
 func _on_pieces_changed() -> void:

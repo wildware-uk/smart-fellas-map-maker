@@ -55,7 +55,7 @@ static func new_marker(map: Node3D, kind: String, at: Vector3, normal: Vector3) 
 	var info: Dictionary = KINDS[kind]
 	var marker: Marker3D = WildlifeMarker.new() if info.get("script", false) else Marker3D.new()
 	marker.name = "%s%d" % [info["prefix"], _next_number(map, info["prefix"])]
-	var ceiling: float = map.get("ceiling")
+	var ceiling: float = map.call("area_ceiling")
 	var lift: float = info["lift"]
 	var away := normal.normalized() if normal.is_finite() and not normal.is_zero_approx() else Vector3.UP
 	var spot := at + away * lift
