@@ -22,9 +22,9 @@ It's a Godot project with our add-on already switched on. The add-on gives Godot
 
 ## Update it
 
-The **Map** panel says which version you have, under **This add-on**. Once a day, when Godot opens, it asks GitHub whether a newer one is out, and says "Update available" with what's new. Press **Update**, then **Restart Godot**. Only the add-on's own folder (`addons/smart_fellas_maps`) changes: your maps and models stay as they are. Each download is checked against the SHA-256 published with its release, and refused if it doesn't match.
+The **Map** panel says which version you have, under **This add-on**, at the bottom. Once a day, when Godot opens, it asks GitHub whether a newer one is out. If one is, a banner at the top of the **Map** panel says "Update available", with **Update** and **What's new**. Press **Update**, then **Restart Godot**. Only the add-on's own folder (`addons/smart_fellas_maps`) changes: your maps and models stay as they are. Each download is checked against the SHA-256 published with its release, and refused if it doesn't match.
 
-**Check for updates** asks straight away. Untick **Check for updates automatically** if you'd rather it didn't ask by itself. With no internet, it says nothing.
+**Check for updates**, under **This add-on**, or **Project > Tools > Smart Fellas: Check for updates** asks straight away. Untick **Check for updates automatically** if you'd rather it didn't ask by itself. With no internet, it says nothing.
 
 If your Map panel has no Update button, your add-on is from before the updater. To update it, once: download the new zip and unzip it somewhere new, copy your maps (your `.tscn` files, and any models of your own) into the new folder, and open its `project.godot`.
 

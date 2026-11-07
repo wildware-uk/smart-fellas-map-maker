@@ -1,8 +1,8 @@
 @tool
 extends EditorPlugin
 ## Puts the add-on's tools in the editor: the Export Map and Test Map buttons above the 3D view, the Pieces panel in
-## the dock on the left, the Map, Paint and Water panels in a dock of their own on the right, and the cost meter
-## below the 3D view.
+## the dock on the left, the Map, Paint and Water panels in a dock of their own on the right, the cost meter
+## below the 3D view, and Project > Tools > Smart Fellas: Check for updates.
 
 const Brush := preload("brush.gd")
 const BrushTool := preload("brush_tool.gd")
@@ -19,6 +19,7 @@ const PaintPanel := preload("paint_panel.gd")
 const PieceDrop := preload("piece_drop.gd")
 const PiecesPanel := preload("pieces_panel.gd")
 const TestResults := preload("test_results.gd")
+const UpdateBanner := preload("update_banner.gd")
 const WaterPanel := preload("water_panel.gd")
 
 ## Where the Map, Paint and Water panels go: under the Inspector, in a dock of their own. Beside the Inspector,
@@ -28,6 +29,8 @@ const TOOLS_SLOT := DOCK_SLOT_RIGHT_BL
 ## beside the Inspector. New names start them afresh in their own dock. Godot keeps a dock's names in a list
 ## split at commas, so these must have none.
 const TOOLS_LAYOUT := "Smart Fellas %s"
+
+const CHECK_FOR_UPDATES := "Smart Fellas: Check for updates"
 
 ## How many 3D views Godot can split into.
 const VIEWS := 4
@@ -58,6 +61,7 @@ var _drops: Array[Control] = []
 var _map: SmartFellasMap
 var _cost_is_stale := true
 var _camera: Camera3D
+var _update_dialog: AcceptDialog
 var _drops_awake := false
 
 
@@ -130,6 +134,7 @@ func _enter_tree() -> void:
 	_cost_bar = CostBar.new()
 	add_control_to_container(CONTAINER_SPATIAL_EDITOR_BOTTOM, _cost_bar)
 	_add_drops()
+	add_tool_menu_item(CHECK_FOR_UPDATES, _check_for_updates)
 
 	set_input_event_forwarding_always_enabled()
 	set_force_draw_over_forwarding_enabled()
@@ -173,6 +178,10 @@ func _exit_tree() -> void:
 	_pieces_dock.queue_free()
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_BOTTOM, _cost_bar)
 	_cost_bar.queue_free()
+	remove_tool_menu_item(CHECK_FOR_UPDATES)
+	if _update_dialog != null:
+		_update_dialog.queue_free()
+		_update_dialog = null
 	for drop in _drops:
 		drop.queue_free()
 	_drops.clear()
@@ -187,6 +196,24 @@ func _dock_of(panel: Control, title: String, slot: int, layout_key := "") -> Edi
 	dock.add_child(panel)
 	add_dock(dock)
 	return dock
+
+
+## Asks GitHub for a newer add-on, as the Map panel's Check for updates does, and shows what it finds in a
+## small window with Update in it.
+func _check_for_updates() -> void:
+	if _update_dialog == null:
+		_update_dialog = AcceptDialog.new()
+		_update_dialog.title = "Smart Fellas map maker"
+		_update_dialog.ok_button_text = "Close"
+		var banner := UpdateBanner.new(_map_panel.update_box())
+		banner.always_shown = true
+		banner.minimum_width = 360.0
+		_update_dialog.add_child(banner)
+		EditorInterface.get_base_control().add_child(_update_dialog)
+	_update_dialog.popup_centered()
+	# Once the new version is in place, what's left is to restart, which the window already says.
+	if not _map_panel.update_box().installed():
+		_map_panel.update_box().check(false)
 
 
 ## One drop catcher over each 3D view.

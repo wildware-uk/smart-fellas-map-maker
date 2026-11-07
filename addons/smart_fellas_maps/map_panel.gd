@@ -2,13 +2,15 @@
 extends VBoxContainer
 ## The Map panel: the map's name and size, who may play on it, what lives there, and buttons that drop
 ## spawn points and food in. Every change goes through Godot's undo and is saved with the scene. What
-## the game would refuse is said here as it's typed, and Export won't write it.
+## the game would refuse is said here as it's typed, and Export won't write it. All of it scrolls, so
+## nothing is ever cut off, under a banner that says when a newer add-on is out.
 
 const MapExporter := preload("map_exporter.gd")
 const MarkerKinds := preload("marker_kinds.gd")
 const Populate := preload("populate.gd")
 const Recipes := preload("recipes.gd")
 const SeabedTool := preload("seabed_tool.gd")
+const UpdateBanner := preload("update_banner.gd")
 const UpdateBox := preload("update_box.gd")
 
 signal placing_asked(kind: String)
@@ -19,6 +21,8 @@ signal sculpting_settings_changed(wide: float, strength: float)
 const MINIMUM_WIDTH := 200.0
 const PROBLEM_COLOUR := Color(1.0, 0.45, 0.4)
 const WARNING_COLOUR := Color(1.0, 0.75, 0.3)
+## The most of the panel's height the problems and warnings take before they scroll on their own.
+const NOTES_SHARE := 0.3
 ## Each number a map sets: its property, what a person calls it, its limits and its step.
 const NUMBERS := [
 	["half_width", "Half width (m)", MapExporter.HALF_WIDTHS, 1.0],
@@ -76,10 +80,18 @@ var _populate_groups := {}
 var _models_list: VBoxContainer
 ## The models the list was last made for, so that it's made again only when they change.
 var _models_listed: Array[String] = []
+var _update_box: UpdateBox
+var _notes_line: HSeparator
+var _notes: ScrollContainer
 
 
 func _ready() -> void:
 	name = "Map"
+	_update_box = UpdateBox.new()
+	_update_box.minimum_width = MINIMUM_WIDTH
+	var banner := UpdateBanner.new(_update_box)
+	banner.minimum_width = MINIMUM_WIDTH
+	add_child(banner)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -101,15 +113,42 @@ func _ready() -> void:
 	_add_heading(column, "Wildlife")
 	_label(column, "Press one, then click on the map. Drag to scatter fish. Select a jellyfish group or lantern school to set its size in the Inspector.")
 	_add_place_buttons(column, WILDLIFE_KINDS)
+	# Below every button, so that the buttons don't jump about under the mouse as it changes. Pinned
+	# under the scrolling part, it took most of a dock's height and hid the rest (#214).
+	column.add_child(HSeparator.new())
+	_counts = _label(column, "")
 	_add_version(column)
-	# Below the scrolling part, so that the buttons don't jump about under the mouse as these change.
-	add_child(HSeparator.new())
-	_counts = _label(self, "")
-	_problems = _label(self, "")
+	# What the game would refuse stays in sight under the scrolling part, as it's typed, but takes at
+	# most NOTES_SHARE of the panel: past that it scrolls on its own.
+	_notes_line = HSeparator.new()
+	add_child(_notes_line)
+	_notes = ScrollContainer.new()
+	_notes.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(_notes)
+	var notes := VBoxContainer.new()
+	notes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_notes.add_child(notes)
+	_problems = _label(notes, "")
 	_problems.add_theme_color_override("font_color", PROBLEM_COLOUR)
-	_warnings = _label(self, "")
+	_warnings = _label(notes, "")
 	_warnings.add_theme_color_override("font_color", WARNING_COLOUR)
+	notes.minimum_size_changed.connect(_fit_notes)
+	resized.connect(_fit_notes)
 	show_map()
+
+
+## Gives the problems and warnings the height they need, up to NOTES_SHARE of the panel.
+func _fit_notes() -> void:
+	var shown := _problems.visible or _warnings.visible
+	_notes_line.visible = shown
+	_notes.visible = shown
+	var needed: float = (_notes.get_child(0) as Control).get_combined_minimum_size().y
+	_notes.custom_minimum_size.y = minf(needed, size.y * NOTES_SHARE)
+
+
+## The "This add-on" part, which the Tools menu's update check asks too.
+func update_box() -> UpdateBox:
+	return _update_box
 
 
 func _add_seabed(column: Control) -> void:
@@ -279,9 +318,7 @@ func _say_populated(result: Dictionary) -> void:
 ## Which add-on this is, and updating it.
 func _add_version(column: Control) -> void:
 	_add_heading(column, "This add-on")
-	var box := UpdateBox.new()
-	box.minimum_width = MINIMUM_WIDTH
-	column.add_child(box)
+	column.add_child(_update_box)
 
 
 func _label(column: Control, words: String) -> Label:
@@ -390,6 +427,7 @@ func show_map() -> void:
 		warned.append(warning["words"])
 	_warnings.text = "\n".join(warned)
 	_warnings.visible = not warned.is_empty()
+	_fit_notes()
 
 
 ## A line for each of the map's own models, with what it's made of.

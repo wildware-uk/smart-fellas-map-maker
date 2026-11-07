@@ -3,7 +3,8 @@ extends VBoxContainer
 ## The Map panel's "This add-on" part: which version this is, and updating it from GitHub. It asks
 ## GitHub about releases when Godot opens, at most once a day, and when Check for updates is pressed.
 ## With no internet it says nothing unless asked. Update downloads the newest release, checks it, and
-## swaps it in for the add-on's folder; Restart Godot then starts using it.
+## swaps it in for the add-on's folder; Restart Godot then starts using it. The banner at the top of the
+## panel and the Tools menu's dialog show the same news (see update_banner.gd), through `changed`.
 
 const Updater := preload("updater.gd")
 const Version := preload("version.gd")
@@ -20,6 +21,9 @@ const PROBLEM_COLOUR := Color(1.0, 0.45, 0.4)
 
 enum Step { IDLE, CHECKING, SUM, DOWNLOAD }
 
+## Whenever what it says, or what can be done, changes.
+signal changed
+
 ## How wide its labels may shrink, as the Map panel's are.
 var minimum_width := 200.0
 
@@ -33,6 +37,7 @@ var _check: Button
 var _update: Button
 var _restart: Button
 var _auto: CheckBox
+var _announcing := false
 
 
 func _ready() -> void:
@@ -49,7 +54,7 @@ func _ready() -> void:
 	_notes = _label("")
 	_notes.visible = false
 	_update = _button("Update", "Download the newest version, check it, and put it in place of this one. Your maps stay as they are.")
-	_update.pressed.connect(_on_update)
+	_update.pressed.connect(update)
 	_update.visible = false
 	_restart = _button("Restart Godot", "Save your scenes and start Godot again, with the new add-on.")
 	_restart.pressed.connect(func() -> void: EditorInterface.restart_editor(true))
@@ -84,6 +89,14 @@ func _ready() -> void:
 ## Asks GitHub about releases. `quiet` says nothing if GitHub can't be reached, for the check Godot
 ## makes by itself.
 func check(quiet: bool) -> void:
+	# plugin.cfg on disk is the new version now, so a check would wrongly say this is the newest.
+	if installed():
+		return
+	if _step == Step.CHECKING and not quiet:
+		# Godot's own check is under way: say what it finds, as if asked.
+		_quiet = false
+		_say("Checking...", Color.WHITE)
+		return
 	if _step != Step.IDLE:
 		return
 	if Version.number() == Updater.DEV:
@@ -103,8 +116,38 @@ func check(quiet: bool) -> void:
 		_say("Checking...", Color.WHITE)
 
 
-func _on_update() -> void:
-	if _step != Step.IDLE or _latest.is_empty():
+## The newer version found, or "" when there is none to update to.
+func available() -> String:
+	return "" if _latest.is_empty() or installed() else str(_latest["version"])
+
+
+## Whether it is asking GitHub or downloading.
+func busy() -> bool:
+	return _step != Step.IDLE
+
+
+## Whether the newer version is in place, waiting for Godot to start again.
+func installed() -> bool:
+	return _restart != null and _restart.visible
+
+
+## What it last said, and in which colour.
+func words() -> String:
+	return _said.text if _said != null and _said.visible else ""
+
+
+func words_colour() -> Color:
+	return _said.get_theme_color("font_color") if _said != null else Color.WHITE
+
+
+## The newer version's release page, with what changed in it.
+func news_url() -> String:
+	return Version.RELEASES_URL.path_join("tag").path_join("v" + str(_latest.get("version", "")))
+
+
+## Downloads the newer version found, checks it, and puts it in place of this one.
+func update() -> void:
+	if _step != Step.IDLE or _latest.is_empty() or installed():
 		return
 	_update.disabled = true
 	_check.disabled = true
@@ -135,6 +178,7 @@ func _download(sum: String) -> void:
 func _on_answer(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	var step := _step
 	_step = Step.IDLE
+	_announce()
 	var reached := result == HTTPRequest.RESULT_SUCCESS and code == 200
 	match step:
 		Step.CHECKING:
@@ -164,6 +208,7 @@ func _on_answer(result: int, code: int, _headers: PackedStringArray, body: Packe
 
 
 func _show_releases(text: String) -> void:
+	_announce()
 	var found := Updater.read_releases(text, Version.number())
 	if found.has("problem"):
 		if not _quiet:
@@ -219,6 +264,17 @@ func _say(words: String, colour: Color) -> void:
 	_said.text = words
 	_said.add_theme_color_override("font_color", colour)
 	_said.visible = true
+	_announce()
+
+
+## Emits `changed` once this frame's steps are done, so whoever listens sees where they ended.
+func _announce() -> void:
+	if _announcing:
+		return
+	_announcing = true
+	(func() -> void:
+		_announcing = false
+		changed.emit()).call_deferred()
 
 
 func _zip_path() -> String:
