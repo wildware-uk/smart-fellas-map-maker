@@ -45,8 +45,8 @@ signal area_changed
 		has_seabed = value
 		show_seabed()
 		pieces_changed.emit()
-## Which of the map's own models are soft ground, by their file in this project: "sand" or "silt". An
-## octopus can bury itself in them. Any other model is rock.
+## Which of the map's own models are soft ground: "sand" or "silt". An octopus can bury itself in them.
+## Any other model is rock. They're known by MapExporter.ground_key: a model's file, or a loose mesh's.
 @export_storage var soft_models: Dictionary[String, String] = {}:
 	set(value):
 		soft_models = value

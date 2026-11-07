@@ -78,7 +78,7 @@ func _init(map: SmartFellasMap, surfaces := Surfaces.BOTH) -> void:
 		var node: Node3D = found["node"]
 		if not node.is_inside_tree():
 			continue
-		var ground: String = map.soft_models.get(found["path"], "rock")
+		var ground := MapExporter.ground_of(map, found)
 		for part in own_model_parts(node):
 			var mesh := part.mesh
 			_add(mesh, _surface_of(mesh), _faces_of(mesh), mesh.get_aabb(), part.global_transform, "rock" if ground == "rock" else "sand", node)
@@ -116,7 +116,7 @@ static func map_has_sand(map: SmartFellasMap) -> bool:
 	if map.has_seabed and seabed is Node3D and seabed.is_inside_tree():
 		return true
 	for found in MapExporter.own_model_pieces(map):
-		if map.soft_models.get(found["path"], "rock") != "rock" and not own_model_parts(found["node"]).is_empty():
+		if MapExporter.ground_of(map, found) != "rock" and not own_model_parts(found["node"]).is_empty():
 			return true
 	return false
 

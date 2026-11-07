@@ -181,6 +181,8 @@ class Scene:
 	var models := {}
 	## The pictures those models keep beside themselves, by their name in assets/, as their file here.
 	var pictures := {}
+	## What each of those models is made of, by its name in assets/: "rock", "sand" or "silt".
+	var model_grounds := {}
 	## The surfaces of the map's pieces and seabed, for what lies on them, made once Export needs it.
 	var finder: RefCounted
 	## The models Export made itself, from a model the game can't take as it is, by their name in assets/,
@@ -880,6 +882,36 @@ static func _look_of(part: MeshInstance3D) -> String:
 	return look
 
 
+## What the map's soft_models knows `found`, one of own_model_pieces, by: a model's file, or for a mesh on
+## its own, its mesh's file, or "::" and its name inside a scene for a mesh saved in one. Godot moves a mesh
+## from another scene into the map's when it saves the map, keeping that name, so the key stays the same
+## however often the map is saved. Nothing for a mesh that was never saved, until mark_key names it.
+static func ground_key(found: Dictionary) -> String:
+	if not found.has("alone"):
+		return found["path"]
+	var mesh: Mesh = (found["node"] as MeshInstance3D).mesh
+	var path := mesh.resource_path
+	if not path.is_empty() and not path.contains("::"):
+		return path
+	var id := mesh.get_scene_unique_id()
+	return "" if id.is_empty() else "::" + id
+
+
+## The key ground_key gives `found`, having first named its mesh inside the map's scene if it was never
+## saved, so that it has one. Godot keeps that name when it saves the scene.
+static func mark_key(found: Dictionary) -> String:
+	if ground_key(found).is_empty():
+		var mesh: Mesh = (found["node"] as MeshInstance3D).mesh
+		mesh.set_scene_unique_id(Resource.generate_scene_unique_id())
+	return ground_key(found)
+
+
+## What `found`, one of own_model_pieces, is made of: "rock", "sand" or "silt".
+static func ground_of(map: SmartFellasMap, found: Dictionary) -> String:
+	var key := ground_key(found)
+	return "rock" if key.is_empty() else map.soft_models.get(key, "rock")
+
+
 ## The meshes drawn in `node` and under it, that a model made from it would hold.
 static func meshes_in(node: Node) -> Array[MeshInstance3D]:
 	var meshes: Array[MeshInstance3D] = []
@@ -1435,7 +1467,7 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 		var path: String = found["path"]
 		_warn_of_twin(node, found, first_in_place, scene)
 		if not names_of.has(path) and found.has("alone") and _too_wide(node):
-			var parts := _cut_wide_mesh(node, scene)
+			var parts := _cut_wide_mesh(node, ground_of(root, found), scene)
 			if parts > 0:
 				scene.changes["cut"] += 1
 				scene.changes["cut_parts"] += parts
@@ -1492,6 +1524,8 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 				if not _read_model_pictures(node, source, bytes, scene):
 					continue
 			names_of[path] = names
+			for each in names:
+				scene.model_grounds[each] = ground_of(root, found)
 		for index in names_of[path].size():
 			_read_piece(node, "", scene, names_of[path][index], index == 0)
 	# What maps can't use yet is left out with a word, and the map exports without it.
@@ -2103,8 +2137,9 @@ static func _too_wide(node: MeshInstance3D) -> bool:
 
 ## Cuts `node`, a mesh on its own too wide for one model, into parts by where its triangles lie, each a model
 ## of the map's own standing at its own middle: as few as cover the map with parts no wider than the game
-## takes in a model. Triangles outside the reach of the map are left out. Gives back how many parts.
-static func _cut_wide_mesh(node: MeshInstance3D, scene: Scene) -> int:
+## takes in a model, each made of `ground`. Triangles outside the reach of the map are left out. Gives back how
+## many parts.
+static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -> int:
 	var root := _root_of(node)
 	var reach: float = root.half_width + SCENERY_BEYOND
 	var cells := maxi(ceili(reach * 2.0 / WIDEST_CUT), 1)
@@ -2160,6 +2195,7 @@ static func _cut_wide_mesh(node: MeshInstance3D, scene: Scene) -> int:
 		scene.built[name] = bytes
 		if not _take_model(node, String(node.name), name, "cut %d %s" % [node.get_instance_id(), key], bytes, scene):
 			continue
+		scene.model_grounds[name] = ground
 		scene.pieces.append({"model": name, "at": middle, "up": Vector3.UP, "turn": 0.0, "scale": 1.0})
 		scene.sources["Piece"].append("Part %d of %s" % [made + 1, node.name])
 		made += 1
@@ -2711,15 +2747,12 @@ static func _seabed_text(root: SmartFellasMap, scene: Scene) -> String:
 
 ## Which of the map's own models are sand or silt, by their names in the package, or nothing if none is, as
 ## the game leaves it out.
-static func _soft_models_text(root: SmartFellasMap, scene: Scene) -> String:
+static func _soft_models_text(scene: Scene) -> String:
 	var names: Array = scene.models.keys()
 	names.sort()
 	var entries := ""
-	var grounds := {}
-	for path: String in root.soft_models:
-		grounds[ProjectSettings.globalize_path(path)] = root.soft_models[path]
 	for name: String in names:
-		var ground: String = grounds.get(scene.models[name], "rock")
+		var ground: String = scene.model_grounds.get(name, "rock")
 		if ground == "sand" or ground == "silt":
 			entries += "(model: \"%s\", ground: %s), " % [name, ground.capitalize()]
 	if entries.is_empty():
@@ -2804,7 +2837,7 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	var format := SCULPTED_FORMAT if root.seabed_side != 0 else FORMAT
 	if not scene.models.is_empty():
 		format = MODELS_FORMAT
-	var soft := _soft_models_text(root, scene)
+	var soft := _soft_models_text(scene)
 	if not root.has_seabed or not soft.is_empty():
 		format = NO_SEABED_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]

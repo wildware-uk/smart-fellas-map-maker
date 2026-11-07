@@ -82,6 +82,12 @@ var _populate_groups := {}
 var _models_list: VBoxContainer
 ## The models the list was last made for, so that it's made again only when they change.
 var _models_listed: Array[String] = []
+## The lines for the one model selected in the scene, above the list: its name, wrapped, and its choice.
+var _selected_line: VBoxContainer
+var _selected_label: Label
+var _selected_choice: OptionButton
+## The one node selected in the scene, if one is. Untyped, as it may have been freed since.
+var _selected: Variant = null
 var _update_box: UpdateBox
 var _notes_line: HSeparator
 var _notes: ScrollContainer
@@ -180,7 +186,17 @@ func _add_seabed(column: Control) -> void:
 	flatten.pressed.connect(func() -> void: flatten_asked.emit())
 	column.add_child(flatten)
 	_add_heading(column, "Your own models")
-	_label(column, "What each of your own models is made of. Octopuses can bury themselves in sand and silt. Anything else is rock.")
+	_label(column, "What each of your own models and meshes is made of. Octopuses can bury themselves in sand and silt, and Populate grows sand's plants there. Anything else is rock. Select one in the scene to set it here too.")
+	_selected_line = VBoxContainer.new()
+	_selected_label = _label(_selected_line, "")
+	_selected_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	_selected_choice = _ground_choice()
+	_selected_choice.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_selected_choice.item_selected.connect(func(index: int) -> void: _on_model_ground_chosen(index, str(_selected_choice.get_meta("line", ""))))
+	_selected_line.add_child(_selected_choice)
+	_selected_line.add_child(HSeparator.new())
+	_selected_line.visible = false
+	column.add_child(_selected_line)
 	_models_list = VBoxContainer.new()
 	column.add_child(_models_list)
 
@@ -489,52 +505,141 @@ func show_map() -> void:
 	_fit_notes()
 
 
-## A line for each of the map's own models, with what it's made of.
+## A line for each of the map's own models, with what it's made of, and one for the model selected.
 func _show_models(map: SmartFellasMap) -> void:
-	var paths: Array[String] = []
-	for found in MapExporter.own_model_pieces(map):
-		# A mesh on its own has no file to mark, so it stays rock.
-		if found.has("alone"):
-			continue
-		if not found["path"] in paths:
-			paths.append(found["path"])
-	paths.sort()
-	if paths != _models_listed:
-		_models_listed = paths
-		for line in _models_list.get_children():
-			_models_list.remove_child(line)
-			line.queue_free()
-		if paths.is_empty():
-			_label(_models_list, "None yet. Drag a .glb from the FileSystem panel into the map.")
-		for path in paths:
-			var line := HBoxContainer.new()
+	var lines := model_lines(map)
+	var listed: Array[String] = []
+	for line in lines:
+		listed.append("%s|%s|%d" % [line["id"], line["words"], line["count"]])
+	if listed != _models_listed:
+		_models_listed = listed
+		for old in _models_list.get_children():
+			_models_list.remove_child(old)
+			old.queue_free()
+		if lines.is_empty():
+			_label(_models_list, "None yet. Drag a .glb or a mesh from the FileSystem panel into the map.")
+		for line in lines:
+			var row := HBoxContainer.new()
 			var label := Label.new()
-			label.text = path.get_file()
-			label.tooltip_text = path
+			label.text = line["words"]
+			label.tooltip_text = line["tip"]
 			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			label.clip_text = true
-			line.add_child(label)
-			var choice := OptionButton.new()
-			for words in ["Rock", "Sand", "Silt"]:
-				choice.add_item(words)
-			choice.item_selected.connect(_on_model_ground_chosen.bind(path))
-			line.add_child(choice)
-			_models_list.add_child(line)
-	for index in paths.size():
-		var choice := _models_list.get_child(index).get_child(1) as OptionButton
-		choice.select(MODEL_GROUNDS.find(map.soft_models.get(paths[index], "rock")))
-
-
-
-func _on_model_ground_chosen(index: int, path: String) -> void:
-	var map := _map()
-	if _showing or map == null:
+			label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			label.mouse_filter = Control.MOUSE_FILTER_PASS
+			row.add_child(label)
+			# Beside the name rather than in it, so that a long name cut short never hides it.
+			if line["count"] > 1:
+				var placed := Label.new()
+				placed.text = "×%d" % line["count"]
+				placed.tooltip_text = "Placed %d times in the map." % line["count"]
+				placed.mouse_filter = Control.MOUSE_FILTER_PASS
+				placed.modulate.a = 0.7
+				row.add_child(placed)
+			var choice := _ground_choice()
+			choice.item_selected.connect(_on_model_ground_chosen.bind(line["id"]))
+			row.add_child(choice)
+			_models_list.add_child(row)
+	for index in lines.size():
+		var row := _models_list.get_child(index)
+		var choice := row.get_child(row.get_child_count() - 1) as OptionButton
+		choice.select(MODEL_GROUNDS.find(lines[index]["ground"]))
+	var selected := line_of(lines, _selected, map)
+	_selected_line.visible = not selected.is_empty()
+	if selected.is_empty():
 		return
+	_selected_label.text = "Selected: %s" % selected["words"]
+	if selected["count"] > 1:
+		_selected_label.text += " (%d placed)" % selected["count"]
+	_selected_label.tooltip_text = selected["tip"]
+	_selected_choice.select(MODEL_GROUNDS.find(selected["ground"]))
+	_selected_choice.set_meta("line", selected["id"])
+
+
+func _ground_choice() -> OptionButton:
+	var choice := OptionButton.new()
+	for words in ["Rock", "Sand", "Silt"]:
+		choice.add_item(words)
+	return choice
+
+
+## The lines the list shows, one for each model file and each mesh, sorted by their words, as {"id",
+## "words", "count", "tip", "ground", "found"}: "count" is how many times it's placed, and "found" the first
+## of own_model_pieces it stands for.
+static func model_lines(map: SmartFellasMap) -> Array[Dictionary]:
+	var by_id := {}
+	var counts := {}
+	for found in MapExporter.own_model_pieces(map):
+		var key := MapExporter.ground_key(found)
+		# A mesh never saved has no key until it's marked, so it's told apart by the mesh itself.
+		var id := key if not key.is_empty() else "unsaved %d" % (found["node"] as MeshInstance3D).mesh.get_instance_id()
+		counts[id] = counts.get(id, 0) + 1
+		if not by_id.has(id):
+			by_id[id] = {"id": id, "found": found, "ground": MapExporter.ground_of(map, found)}
+	var lines: Array[Dictionary] = []
+	for id: String in by_id:
+		var line: Dictionary = by_id[id]
+		var found: Dictionary = line["found"]
+		line["count"] = counts[id]
+		if not found.has("alone"):
+			line["words"] = String(found["path"]).get_file()
+			line["tip"] = found["path"]
+		elif id.begins_with("::") or id.begins_with("unsaved "):
+			line["words"] = "%s (mesh saved in the map)" % found["node"].name
+			line["tip"] = "A mesh saved inside this map's scene, first used by %s." % found["node"].name
+		else:
+			line["words"] = id.get_file()
+			line["tip"] = id
+		lines.append(line)
+	lines.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (a["words"] as String).naturalnocasecmp_to(b["words"]) < 0)
+	return lines
+
+
+## The line of `lines` that `node` belongs to: the model it is or is inside, the nearest one up. Empty if
+## none, or if `node` has been freed since it was selected: untyped, as Godot refuses a freed object for a
+## typed argument.
+static func line_of(lines: Array[Dictionary], node: Variant, map: SmartFellasMap) -> Dictionary:
+	if not is_instance_valid(node) or not node is Node:
+		return {}
+	var by_node := {}
+	for found in MapExporter.own_model_pieces(map):
+		var key := MapExporter.ground_key(found)
+		by_node[found["node"]] = key if not key.is_empty() else "unsaved %d" % (found["node"] as MeshInstance3D).mesh.get_instance_id()
+	var above := node as Node
+	while above != null and above != map:
+		if by_node.has(above):
+			for line in lines:
+				if line["id"] == by_node[above]:
+					return line
+		above = above.get_parent()
+	return {}
+
+
+## Shows the line for `node`, selected in the scene alone, or none.
+func show_selected(node: Node) -> void:
+	_selected = node
+	var map := _map()
+	if map != null and _selected_line != null:
+		_showing = true
+		_show_models(map)
+		_showing = false
+
+
+func _on_model_ground_chosen(index: int, id: String) -> void:
+	var map := _map()
+	if _showing or map == null or id.is_empty():
+		return
+	var line := {}
+	for each in model_lines(map):
+		if each["id"] == id:
+			line = each
+	if line.is_empty():
+		return
+	var key := MapExporter.mark_key(line["found"])
 	var grounds: Dictionary[String, String] = map.soft_models.duplicate()
 	if MODEL_GROUNDS[index] == "rock":
-		grounds.erase(path)
+		grounds.erase(key)
 	else:
-		grounds[path] = MODEL_GROUNDS[index]
+		grounds[key] = MODEL_GROUNDS[index]
 	_set_property("soft_models", grounds)
 
 

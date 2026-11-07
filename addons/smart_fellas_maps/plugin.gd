@@ -361,10 +361,12 @@ func _on_scene_changed(scene: Node) -> void:
 	_cost_is_stale = true
 
 
-## One piece or model selected alone is watched, so that what stands on it moves with it.
+## One piece or model selected alone is watched, so that what stands on it moves with it, and the Map
+## panel offers what it's made of.
 func _on_selection_changed() -> void:
 	var selected := EditorInterface.get_selection().get_top_selected_nodes()
 	_carrier.watch(selected[0] as Node3D if selected.size() == 1 else null)
+	_map_panel.show_selected(selected[0] if selected.size() == 1 else null)
 
 
 func _watch_map(map: SmartFellasMap) -> void:
