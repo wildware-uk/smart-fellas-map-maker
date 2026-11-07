@@ -27,6 +27,12 @@ const SFM_EXTENSION := "sfm"
 const OLD_PACKAGE_FILES := ["map.ron", "preview.png"]
 ## The game's MAX_ASSET_BYTES and MAX_MAP_MODELS.
 const MOST_MODEL_BYTES := 67108864
+## The words a .glb starts with, and the kinds of its two parts, as little-endian numbers.
+const GLB_MAGIC := 0x46546C67
+const GLB_JSON := 0x4E4F534A
+const GLB_BIN := 0x004E4942
+## What Export says when a file it made itself would be refused by the game, with the file and why.
+const OUR_BAD_FILE := "Export made a bad file, %s: %s That's our mistake, not yours. Please report it to us, and say which map."
 const MOST_MODELS := 1024
 ## The game's MAX_ENTRIES: the most files and folders a map's package may hold.
 const MOST_ENTRIES := 1024
@@ -416,6 +422,10 @@ static func pack_folder(folder: String, to: String) -> String:
 			var why := error_string(read if read != OK else went)
 			return "Can't pack %s into %s: %s." % [inside, to.get_file(), why]
 	zip.close()
+	var unpacked := _packed_problem(partial, folder)
+	if not unpacked.is_empty():
+		DirAccess.remove_absolute(partial)
+		return unpacked
 	if FileAccess.file_exists(to):
 		DirAccess.remove_absolute(to)
 	var moved := DirAccess.rename_absolute(partial, to)
@@ -423,6 +433,27 @@ static func pack_folder(folder: String, to: String) -> String:
 		DirAccess.remove_absolute(partial)
 		return "Can't write %s: %s." % [to, error_string(moved)]
 	return ""
+
+
+## Reads back every file of the .sfm `package` packed from `folder`, and says what the game would refuse:
+## a file that comes out other than it went in, or a .glb laid out wrongly. Nothing if all is well.
+static func _packed_problem(package: String, folder: String) -> String:
+	var zip := ZIPReader.new()
+	if zip.open(package) != OK:
+		return OUR_BAD_FILE % [package.get_file(), "It can't be opened as a zip."]
+	var problem := ""
+	for inside in _files_inside(folder, ""):
+		var bytes := zip.read_file(inside) if zip.file_exists(inside) else PackedByteArray()
+		if bytes != FileAccess.get_file_as_bytes(folder.path_join(inside)):
+			problem = OUR_BAD_FILE % [inside, "It comes out of the .sfm other than it went in."]
+		elif inside.ends_with(".glb"):
+			var bad := glb_layout_problem(bytes)
+			if not bad.is_empty():
+				problem = OUR_BAD_FILE % [inside, bad]
+		if not problem.is_empty():
+			break
+	zip.close()
+	return problem
 
 
 ## The bytes of the file `inside` the .sfm `package`, or nothing if it isn't there.
@@ -524,6 +555,9 @@ static func _copy_models(scene: Scene, folder: String) -> String:
 			var split := pictures_set_beside(bytes)
 			bytes = split["glb"]
 			beside.merge(split["pictures"])
+		var bad := model_file_problem(bytes, scene.built.has(name), name, source)
+		if not bad.is_empty():
+			return bad
 		var written := _write_file(assets.path_join(name), bytes)
 		if not written.is_empty():
 			return written
@@ -672,6 +706,46 @@ static func _read_model_pictures(node: Node, source: String, bytes: PackedByteAr
 			return false
 		scene.pictures[picture] = beside
 	return true
+
+
+## What Export says of the model `name` it's about to write, from `source`, if the game would refuse how its
+## parts are laid out, or nothing: one Export `built` itself is Export's own mistake; one copied as it is,
+## the map maker's file.
+static func model_file_problem(bytes: PackedByteArray, built: bool, name: String, source: String) -> String:
+	var bad := glb_layout_problem(bytes)
+	if bad.is_empty():
+		return ""
+	if built:
+		return OUR_BAD_FILE % ["%s/%s" % [ASSETS_FOLDER, name], bad]
+	return "The game can't read the model %s: %s Export it again from Blender as glTF Binary (.glb)." % [source, bad]
+
+
+## What the game's checker would refuse in how a .glb's parts are laid out, as `split_glb` in the game's
+## src/map/model.rs reads them, in plain words ending in a full stop, or nothing.
+static func glb_layout_problem(bytes: PackedByteArray) -> String:
+	if bytes.size() < 12 or bytes.decode_u32(0) != GLB_MAGIC:
+		return "It isn't a .glb."
+	if bytes.decode_u32(4) != 2:
+		return "It is an old kind of glTF."
+	if bytes.decode_u32(8) != bytes.size():
+		return "Its header says it is %d bytes long, but it is %d." % [bytes.decode_u32(8), bytes.size()]
+	var kinds: Array[int] = []
+	var at := 12
+	while at < bytes.size():
+		if bytes.size() - at < 8:
+			return "Its last part is cut short."
+		var length := bytes.decode_u32(at)
+		if length > bytes.size() - at - 8:
+			return "One of its parts says it is longer than the file."
+		kinds.append(bytes.decode_u32(at + 4))
+		at += 8 + length
+		if kinds.size() > 2:
+			return "It has more parts than a model has."
+	if kinds.is_empty() or kinds[0] != GLB_JSON:
+		return "Its first part isn't its description."
+	if kinds.size() == 2 and kinds[1] != GLB_BIN:
+		return "It has a part the game doesn't know."
+	return ""
 
 
 ## The description inside a .glb, or an empty Dictionary if it isn't one.
@@ -1380,15 +1454,17 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 					continue
 				if made.size() > 1:
 					scene.changes["split"] += 1
-				var taken := true
+				var kept: Array[String] = []
 				for index in made.size():
 					if index > 0:
 						names.append(_free_model_name("%s_part%d.glb" % [base.get_basename(), index + 1], scene))
 					scene.built[names[index]] = made[index]
 					scene.model_middles[names[index]] = split["middle"]
-					taken = _take_model(node, called, names[index], source, made[index], scene) and taken
-				if not taken:
+					if _take_model(node, called, names[index], source, made[index], scene):
+						kept.append(names[index])
+				if kept.is_empty():
 					continue
+				names = kept
 			else:
 				if not _take_model(node, called, name, source, bytes, scene):
 					continue
@@ -1439,6 +1515,15 @@ static func _take_model(node: Node, called: String, name: String, source: String
 		return false
 	var description := glb_description(bytes)
 	var tally := model_tally(description)
+	if tally["triangles"] == 0:
+		var built := scene.built.has(name)
+		scene.built.erase(name)
+		scene.model_middles.erase(name)
+		if built and _draws_triangles(node):
+			scene.problem_on(node, OUR_BAD_FILE % [called, "It came out with nothing to draw, though its mesh has triangles."])
+			return false
+		scene.warning_among(node, "nothing to draw", "%s has nothing to draw in it, so it was left out." % called, "%d models have nothing to draw in them, so they were left out.")
+		return false
 	var too_much := _model_limits_problem(tally)
 	if too_much.is_empty():
 		too_much = _pictures_problem(bytes, source)
@@ -1470,6 +1555,24 @@ static func _take_model(node: Node, called: String, name: String, source: String
 		scene.warning_among(node, "no picture", "%s has no picture, only colours. An octopus copying it wears its plain colour." % node.name, "%d models have no picture, only colours. An octopus copying one wears its plain colour.")
 	scene.models[name] = source
 	return true
+
+
+## Whether `node` has triangles to draw: a mesh's own, a scattered mesh's, or those of the meshes in a scene.
+static func _draws_triangles(node: Node) -> bool:
+	var meshes: Array[Mesh] = []
+	if node is MeshInstance3D:
+		meshes.append(node.mesh)
+	elif node is MultiMeshInstance3D and node.multimesh != null:
+		meshes.append(node.multimesh.mesh)
+	else:
+		for part in meshes_in(node):
+			meshes.append(part.mesh)
+	meshes = meshes.filter(func(mesh: Mesh) -> bool: return mesh != null)
+	for mesh in meshes:
+		for surface in mesh.get_surface_count():
+			if mesh.surface_get_primitive_type(surface) == Mesh.PRIMITIVE_TRIANGLES and mesh.surface_get_array_len(surface) > 0:
+				return true
+	return false
 
 
 ## How many pixels the game draws a PNG with: no more than PICTURE_SIDE_DRAWN across, as it shrinks one.
@@ -1921,13 +2024,25 @@ static func built_glb(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, cha
 		_join_same_materials(part)
 	if shrunk and changes.has("shrunk"):
 		changes["shrunk"] += 1
+	# In the editor, Godot leaves out of a .glb every node under the top one that has no owner, taking it for
+	# a tool script's passing node. Export's copies and holders are made of such nodes.
+	for inside in copy.find_children("*", "", true, false):
+		inside.owner = copy
 	var document := GLTFDocument.new()
 	document.image_format = "PNG"
 	var state := GLTFState.new()
 	var bytes := PackedByteArray()
 	if document.append_from_scene(copy, state) == OK:
-		bytes = document.generate_buffer(state)
+		bytes = length_set_right(document.generate_buffer(state))
 	copy.free()
+	return bytes
+
+
+## `bytes`, a .glb Godot made, with the length in its header made right: for one with nothing in its
+## binary part, as a model with nothing to draw, Godot counts that part's header though it leaves it out.
+static func length_set_right(bytes: PackedByteArray) -> PackedByteArray:
+	if bytes.size() >= 20 and bytes.decode_u32(8) == bytes.size() + 8 and 20 + bytes.decode_u32(12) == bytes.size():
+		bytes.encode_u32(8, bytes.size())
 	return bytes
 
 

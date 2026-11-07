@@ -2,6 +2,12 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.07-ed3f367
+
+- Export now checks every model file it writes, and the finished .sfm, the way the game will. If one would be refused, it says so and asks you to report it, instead of the game saying "Export it again".
+- Fixed Test Map and Export refusing every scattered mesh (MultiMesh) as "cut short or has extra bytes on the end".
+- A mesh with nothing in it no longer stops Export: it is left out, with a note saying so.
+
 ## 2026.11.06-9f4bd7d
 
 - Meshes scattered with MultiMesh now come out of Export as placed copies, with their stretch and their tint.
