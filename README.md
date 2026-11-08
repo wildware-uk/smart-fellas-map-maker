@@ -16,7 +16,9 @@ It's a Godot project with our add-on already switched on. The add-on gives Godot
    The first time it opens, Godot takes a minute or two to read in the pieces.
 4. Open `maps/bare_sand.tscn`, or press **Make a new bare map** in the **Paint** panel.
 5. Press **Populate** in the **Map** panel, then **Test Map** above the 3D view to swim in it.
-   Test Map needs Smart Fellas installed through Steam.
+   Test Map needs Smart Fellas installed through Steam. The game isn't out yet, so for now only
+   playtesters have it. You can still build a map without it. To try yours in the game, join the
+   [Smart Fellas Discord](https://discord.gg/TWsP93NA62) and ask to join the playtests.
 
 **The play area** is the blue box in the 3D view: where players can swim, spawn and eat. Press **Fit to map** in the **Map** panel to fit it round your spawns and food, or select **PlayArea** and drag the dots on its faces. Scenery can go anywhere, inside the box or far outside it.
 
