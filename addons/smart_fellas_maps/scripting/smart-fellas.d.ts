@@ -61,6 +61,8 @@ interface Point {
 
 /** A side in a match: the octopuses (Smart Fellas) or the divers (Fart Smellas). */
 type Team = "octopus" | "diver";
+/** A tool a diver may carry (game.loadout). */
+type Tool = "spear" | "net" | "sensor" | "torch";
 
 /** Where a player is in the round. */
 type Life = "alive" | "respawning" | "out" | "waiting";
@@ -358,10 +360,32 @@ interface Game {
   /** Adds to a team's score, or takes away with a negative number (for game modes). */
   addTeamScore(team: Team, points: number): void;
   /**
-   * Every diver may hurt every other diver, whatever the lobby's friendly fire says: for modes where
-   * everyone plays for themselves (for game modes).
+   * Everyone plays for themselves: nobody is anyone's teammate. No names over rivals' heads, no
+   * shared pings, team chat or diver radio, every diver may hurt every other whatever the lobby's
+   * friendly fire says, and diver bots fight rival divers as well as hunting octopuses (for game
+   * modes).
    */
   freeForAll(on: boolean): void;
+  /**
+   * What divers carry, from "spear" (the spear gun), "net" (the net gun), "sensor" (motion sensors)
+   * and "torch" (the lamp), each once, with at least one gun. With one gun only, divers get that gun
+   * whatever the lobby's Gun setting, and the lobby shows it as set by the mode. What they lack isn't
+   * on their screen. Until a script calls it, divers carry everything (for game modes).
+   */
+  loadout(team: "diver", ...tools: Tool[]): void;
+  /**
+   * Closes a team to people in the lobby: its Join button greys out with `why` (1 to 60 characters)
+   * under it, and asking to join it is refused. Nobody already on it is moved; use setTeam for that
+   * (for game modes).
+   */
+  closeTeam(team: Team, why: string): void;
+  /** Opens a team closed by closeTeam again (for game modes). */
+  openTeam(team: Team): void;
+  /**
+   * The mode alone decides how many bots a team has, with setBots: the lobby hides the host's bot
+   * count for that team and says the mode sets it (for game modes).
+   */
+  modeBots(team: Team, on: boolean): void;
   /**
    * Asks for `count` bots on a team, 0 to 32. The lobby keeps that many, and a round being played
    * gets or loses them at once. People always keep their places: no more bots join than the
