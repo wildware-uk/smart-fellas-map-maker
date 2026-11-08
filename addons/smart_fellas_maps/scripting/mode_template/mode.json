@@ -1,0 +1,9 @@
+{
+  "name": "Catch Count",
+  "description": "Every catch is a point for the diver who made it. First diver to the goal wins; if time runs out, the octopuses win.",
+  "minPlayers": 2,
+  "maxPlayers": 16,
+  "settings": [
+    { "name": "goal", "label": "Catches to win", "type": "number", "min": 1, "max": 10, "step": 1, "default": 3 }
+  ]
+}
