@@ -74,6 +74,13 @@ func forget() -> void:
 	_gathered = {}
 
 
+## What PlayArea.gather finds in `map`, gathered once after each change, for the outlines and the Map panel.
+func gathered(map: SmartFellasMap) -> Dictionary:
+	if _gathered.is_empty():
+		_gathered = PlayArea.gather(map)
+	return _gathered
+
+
 func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	gizmo.clear()
 	var node := gizmo.get_node_3d()
@@ -114,9 +121,7 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 
 
 func _outline_what_is_outside(gizmo: EditorNode3DGizmo, map: SmartFellasMap, node: Node3D, low: float, top: float) -> void:
-	if _gathered.is_empty():
-		_gathered = PlayArea.gather(map)
-	var out := PlayArea.outside(map, _gathered)
+	var out := PlayArea.outside(map, gathered(map))
 	var into_map := node.global_transform.affine_inverse()
 	var refused := PackedVector3Array()
 	for marker: Node3D in out["markers"]:

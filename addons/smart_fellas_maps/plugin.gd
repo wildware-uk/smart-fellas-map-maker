@@ -69,6 +69,9 @@ var _carrier: Carrier
 var _drops: Array[Control] = []
 var _map: SmartFellasMap
 var _cost_is_stale := true
+## Whether the Map panel should look at the map again. That reads every piece: 70 ms on the owner's map of
+## thousands. So while a stroke is under way only the cost meter keeps up, and the panel catches up after.
+var _panel_is_stale := true
 var _camera: Camera3D
 var _update_dialog: AcceptDialog
 var _drops_awake := false
@@ -146,6 +149,7 @@ func _enter_tree() -> void:
 	_trigger_gizmos = TriggerGizmos.new()
 	_trigger_gizmos.undo = get_undo_redo()
 	add_node_3d_gizmo_plugin(_trigger_gizmos)
+	_map_panel.gathered = _play_area.gathered
 	_map_panel.show_play_area_shown(_play_area.shown)
 	_map_panel.play_area_toggled.connect(_on_play_area_toggled)
 	_pieces_panel = PiecesPanel.new()
@@ -269,6 +273,8 @@ func _process(delta: float) -> void:
 	if _cost_is_stale:
 		_cost_is_stale = false
 		_cost_bar.show_cost(_map)
+	if _panel_is_stale and _tool.is_idle():
+		_panel_is_stale = false
 		_map_panel.show_map()
 
 
@@ -301,7 +307,7 @@ func _on_painting_toggled(on: bool) -> void:
 ## A brush that's on and can't paint shouldn't leave anyone clicking and wondering.
 func _say_why_the_brush_cant_paint() -> void:
 	if _map != null and _paint_panel.is_painting():
-		_paint_panel.say(Brush.why_it_cant_paint(_map, _paint_panel.recipe()))
+		_paint_panel.say(Brush.why_it_cant_paint(_map, _paint_panel.recipe(), _tool.surfaces()))
 	else:
 		_paint_panel.say("")
 
@@ -364,6 +370,8 @@ func _say(words: String) -> void:
 
 
 func _on_scene_changed(scene: Node) -> void:
+	# The Map panel shares the play area's gathering of the map's pieces: the last map's mustn't show here.
+	_play_area.forget()
 	_water_panel.show_map()
 	_map_panel.show_map()
 	var map := scene as SmartFellasMap
@@ -377,7 +385,7 @@ func _on_scene_changed(scene: Node) -> void:
 	_carrier.map = map
 	_paint_panel.set_has_map(map != null)
 	_say_why_the_brush_cant_paint()
-	_cost_is_stale = true
+	_map_changed()
 
 
 ## One piece or model selected alone is watched, so that what stands on it moves with it, and the Map
@@ -416,21 +424,31 @@ func _redraw_play_area() -> void:
 			box.update_gizmos()
 
 
-func _on_pieces_changed() -> void:
+## The cost meter and the Map panel should look at the map again.
+func _map_changed() -> void:
 	_cost_is_stale = true
+	_panel_is_stale = true
+
+
+func _on_pieces_changed() -> void:
+	_play_area.forget()
+	_map_changed()
 
 
 func _on_history_changed() -> void:
 	_tool.forget_surfaces()
 	if _tool.is_idle():
 		_say_why_the_brush_cant_paint()
-	_cost_is_stale = true
+	_map_changed()
 	_redraw_play_area()
 	update_overlays()
 
 
-func _on_tree_changed(_node: Node) -> void:
-	_cost_is_stale = true
+## Godot adds and takes away nodes of its own all the time, for tooltips and menus. Only the map's count.
+func _on_tree_changed(node: Node) -> void:
+	if _map == null or not is_instance_valid(_map) or not (node == _map or _map.is_ancestor_of(node)):
+		return
+	_map_changed()
 	_redraw_play_area()
 
 

@@ -65,11 +65,14 @@ const SCULPT_MODES := [
 const PIECE_KINDS := ["spawn_octopus", "spawn_diver", "food_patch"]
 ## What a map's own model may be made of, in the order the list offers them.
 const MODEL_GROUNDS := ["rock", "sand", "silt"]
+const GROUND_WORDS := ["Rock", "Sand", "Silt"]
 const WILDLIFE_KINDS := [
 	"fish_lionfish", "fish_flounder", "angler", "jellies", "lantern", "goblin_route", "wrasse", "stingray", "eel_hole", "groper_hole",
 ]
 
 var undo: EditorUndoRedoManager
+## Gives what PlayArea.gather finds in a map, kept between changes: the play area's outlines share it.
+var gathered: Callable = func(map: SmartFellasMap) -> Dictionary: return PlayArea.gather(map)
 
 var _name_edit: LineEdit
 var _numbers := {}
@@ -89,6 +92,9 @@ var _populate_groups := {}
 var _models_list: VBoxContainer
 ## The models the list was last made for, so that it's made again only when they change.
 var _models_listed: Array[String] = []
+## The one pick list every model's line opens. A list of its own on each line took half a second to make on a
+## map of hundreds of models.
+var _ground_menu: PopupMenu
 ## The lines for the one model selected in the scene, above the list: its name, wrapped, and its choice.
 var _selected_line: VBoxContainer
 var _selected_label: Label
@@ -216,6 +222,11 @@ func _add_own_models(column: Control) -> void:
 	column.add_child(_selected_line)
 	_models_list = VBoxContainer.new()
 	column.add_child(_models_list)
+	_ground_menu = PopupMenu.new()
+	for words in GROUND_WORDS:
+		_ground_menu.add_radio_check_item(words)
+	_ground_menu.index_pressed.connect(func(index: int) -> void: _on_model_ground_chosen(index, str(_ground_menu.get_meta("line", ""))))
+	add_child(_ground_menu)
 
 
 func _sculpt_slider(column: Control, words: String, limits: Vector3, value: float) -> HSlider:
@@ -550,7 +561,7 @@ func show_map() -> void:
 	var warned: Array[String] = []
 	for warning in rules.warnings:
 		warned.append(warning["words"])
-	warned.append_array(PlayArea.warnings(map, PlayArea.gather(map)))
+	warned.append_array(PlayArea.warnings(map, gathered.call(map)))
 	_warnings.text = "\n".join(warned)
 	_warnings.visible = not warned.is_empty()
 	_fit_notes()
@@ -586,14 +597,18 @@ func _show_models(map: SmartFellasMap) -> void:
 				placed.mouse_filter = Control.MOUSE_FILTER_PASS
 				placed.modulate.a = 0.7
 				row.add_child(placed)
-			var choice := _ground_choice()
-			choice.item_selected.connect(_on_model_ground_chosen.bind(line["id"]))
+			var choice := Button.new()
+			choice.icon = get_theme_icon("arrow", "OptionButton")
+			choice.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			choice.pressed.connect(_pick_ground.bind(choice, line["id"]))
 			row.add_child(choice)
 			_models_list.add_child(row)
 	for index in lines.size():
 		var row := _models_list.get_child(index)
-		var choice := row.get_child(row.get_child_count() - 1) as OptionButton
-		choice.select(MODEL_GROUNDS.find(lines[index]["ground"]))
+		var choice := row.get_child(row.get_child_count() - 1) as Button
+		var ground := maxi(MODEL_GROUNDS.find(lines[index]["ground"]), 0)
+		choice.text = GROUND_WORDS[ground]
+		choice.set_meta("ground", ground)
 	var selected := line_of(lines, _selected, map)
 	_selected_line.visible = not selected.is_empty()
 	if selected.is_empty():
@@ -606,9 +621,18 @@ func _show_models(map: SmartFellasMap) -> void:
 	_selected_choice.set_meta("line", selected["id"])
 
 
+## Opens the pick list under `choice`, the button on model line `id`, with what it's made of ticked.
+func _pick_ground(choice: Button, id: String) -> void:
+	var ticked: int = choice.get_meta("ground", 0)
+	for index in GROUND_WORDS.size():
+		_ground_menu.set_item_checked(index, index == ticked)
+	_ground_menu.set_meta("line", id)
+	_ground_menu.popup(Rect2i(Vector2i(choice.get_screen_position() + Vector2(0.0, choice.size.y)), Vector2i(int(choice.size.x), 0)))
+
+
 func _ground_choice() -> OptionButton:
 	var choice := OptionButton.new()
-	for words in ["Rock", "Sand", "Silt"]:
+	for words in GROUND_WORDS:
 		choice.add_item(words)
 	return choice
 

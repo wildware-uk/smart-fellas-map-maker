@@ -66,8 +66,9 @@ var _hand_erase := false
 var _only_mix := false
 
 
-## Why this brush can't paint on this map as it stands, in plain words, or nothing if it can.
-static func why_it_cant_paint(map: SmartFellasMap, recipe: Dictionary) -> String:
+## Why this brush can't paint on this map as it stands, in plain words, or nothing if it can. `surfaces`, if
+## given, are the map's as they stand, which saves reading them again.
+static func why_it_cant_paint(map: SmartFellasMap, recipe: Dictionary, surfaces: SurfaceFinder = null) -> String:
 	var any_weight := false
 	for entry in recipe["mix"]:
 		any_weight = any_weight or (entry["weight"] > 0.0 and Kit.has(entry["kit"]))
@@ -77,11 +78,11 @@ static func why_it_cant_paint(map: SmartFellasMap, recipe: Dictionary) -> String
 		return "Every slider in the mix is at 0, so the brush has nothing to paint. Move one up."
 	if not recipe["on_sand"] and not recipe["on_rock"]:
 		return "This brush grows on neither sand nor rock. Tick one under Where it grows."
-	var finder := SurfaceFinder.new(map)
-	var surfaces: String = recipe.get("surfaces", "both")
-	if surfaces == "seabed" and not finder.has_sand:
+	var finder := surfaces if surfaces != null else SurfaceFinder.new(map)
+	var grows_on: String = recipe.get("surfaces", "both")
+	if grows_on == "seabed" and not finder.has_sand:
 		return "This map has no seabed, and this brush only grows on the seabed. Set Surfaces to meshes, or tick Seabed in the Map panel."
-	if surfaces == "meshes" and not finder.has_rock():
+	if grows_on == "meshes" and not finder.has_rock():
 		return "This brush only grows on meshes, and the map has none. Place a rock or a model of your own first."
 	if not finder.has_sand and not finder.has_rock():
 		return "This map has nothing to paint on. Tick Seabed in the Map panel, or place a rock or a model of your own."

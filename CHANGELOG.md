@@ -2,6 +2,12 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.08-710d255
+
+- Painting on big maps is smooth again: the Map panel catches up when a stroke ends, not on every frame of it, and the brush no longer reads the whole map at the start and end of each stroke.
+- An idle editor uses next to no CPU: the water stands still unless Update Continuously is on in Editor Settings.
+- The Map panel refreshes in a third of the time on big maps, and its list of your own models fills in a fifth of the time.
+
 ## 2026.11.08-0462a82
 
 - Small fixes and tidying.

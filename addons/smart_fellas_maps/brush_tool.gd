@@ -47,6 +47,8 @@ var _since_grown := 0.0
 var _warned_close := false
 var _told_full := false
 var _pieces_told := 0
+## Whether the stroke ending now is making its own step of undo, which leaves the surfaces as it kept them.
+var _committing := false
 
 
 ## Whether this key is undo or redo, which mustn't fall in the middle of a stroke.
@@ -60,7 +62,7 @@ func is_idle() -> bool:
 
 ## The map being edited has changed, or something on it has: rays must look again.
 func forget_surfaces() -> void:
-	if _stroke == null:
+	if _stroke == null and not _committing:
 		_finder = null
 
 
@@ -73,7 +75,8 @@ func set_map(map: SmartFellasMap) -> void:
 	_told_full = false
 
 
-func _surfaces() -> SurfaceFinder:
+## The surfaces under the brush, read from the map the first time they're asked for after it changed.
+func surfaces() -> SurfaceFinder:
 	if _finder == null and _map != null:
 		_finder = SurfaceFinder.new(_map)
 	return _finder
@@ -84,7 +87,7 @@ func surface_under(camera: Camera3D, mouse: Vector2) -> Dictionary:
 	if _map == null:
 		return {}
 	var from := camera.project_ray_origin(mouse)
-	return _surfaces().find(from, from + camera.project_ray_normal(mouse) * RAY_LENGTH)
+	return surfaces().find(from, from + camera.project_ray_normal(mouse) * RAY_LENGTH)
 
 
 ## Takes one of the 3D view's input events. Gives back whether the brush used it, so that Godot doesn't.
@@ -171,14 +174,14 @@ func _start_stroke(hit: Dictionary) -> void:
 	_stroke_number += 1
 	_pieces_told = 0
 	if _erase_held:
-		_stroke.start_erasing(_map, recipe, panel.erase_hand_placed(), panel.erase_only_mix(), _surfaces())
+		_stroke.start_erasing(_map, recipe, panel.erase_hand_placed(), panel.erase_only_mix(), surfaces())
 	else:
-		var why_not := Brush.why_it_cant_paint(_map, recipe)
+		var why_not := Brush.why_it_cant_paint(_map, recipe, surfaces())
 		if not why_not.is_empty():
 			said.emit(why_not)
 			_stroke = null
 			return
-		_stroke.start_painting(_map, recipe, recipe["seed"] * 1000 + _stroke_number, _surfaces())
+		_stroke.start_painting(_map, recipe, recipe["seed"] * 1000 + _stroke_number, surfaces())
 	_stroke_to(hit)
 
 
@@ -237,12 +240,18 @@ func end_stroke() -> void:
 	_stroke = null
 	var recipe: Dictionary = panel.recipe()
 	var words := "Erase pieces" if stroke.removed > 0 else "Paint %s" % recipe["name"]
+	# A paint stroke added each solid piece it grew to the surfaces as it went, so they stand. An erase took
+	# pieces away, so they're read again, by anything its step of undo has look at them too.
+	var keeps_surfaces := stroke.removed == 0
+	if not keeps_surfaces:
+		_finder = null
+	_committing = keeps_surfaces
 	stroke.finish(history, words)
+	_committing = false
 	if stroke.placed == 0 and stroke.removed == 0 and stroke.stopped_because.is_empty():
 		panel.say("Nothing grew there: it's as thick as this brush makes it, or Where it grows rules it out.")
 	else:
 		panel.say(stroke.stopped_because)
-	_finder = null
 	view_changed.emit()
 
 
@@ -265,7 +274,7 @@ func draw(overlay: Control, camera: Camera3D) -> void:
 	for index in CIRCLE_POINTS + 1:
 		var angle := TAU * index / CIRCLE_POINTS
 		var on_disc := at + (side * cos(angle) + ahead * sin(angle)) * wide
-		var hit := _surfaces().find(on_disc + normal * wide, on_disc - normal * wide)
+		var hit := surfaces().find(on_disc + normal * wide, on_disc - normal * wide)
 		var point: Vector3 = hit["at"] if not hit.is_empty() else on_disc
 		if camera.is_position_behind(point):
 			continue
@@ -284,7 +293,7 @@ func _draw_edge(overlay: Control, camera: Camera3D) -> void:
 	var area := _map.area_box()
 	var a := area.position
 	var b := area.end
-	var y: float = _surfaces().sand_height
+	var y: float = surfaces().sand_height
 	var corners := [Vector3(a.x, y, a.z), Vector3(b.x, y, a.z), Vector3(b.x, y, b.z), Vector3(a.x, y, b.z)]
 	for side in 4:
 		var line := PackedVector2Array()

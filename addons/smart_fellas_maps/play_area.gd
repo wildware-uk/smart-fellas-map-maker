@@ -39,17 +39,17 @@ static func holds(map: SmartFellasMap, at: Vector3) -> bool:
 	return MapExporter.in_the_map(map, at)
 
 
-## Whether the whole of `box` lies outside the map's area: nothing in it can be reached.
-static func wholly_outside(map: SmartFellasMap, box: AABB) -> bool:
-	var area := map.area_box()
+## Whether the whole of `box` lies outside `area`, the map's: nothing in it can be reached.
+static func wholly_outside(area: AABB, box: AABB) -> bool:
 	return not area.intersects(box) and not area.encloses(box)
 
 
 ## Everything placed that the area is measured against: the markers, each as {"node", "points"}, the
 ## points the game holds to the area (a food patch's spots as well as its middle), and the pieces, each as
 ## {"node", "words", "box", "at"}: placed by hand, the map's own models, each copy of a scattered mesh (its
-## node the scatter), and painted (with no node). "at" is where Export measures a piece from. Hidden ones are
-## out of the map, so out of this.
+## node the scatter, and "copy" its number in place of "words"), and painted (with no node). words_of() says
+## what any of them is called. "at" is where Export measures a piece from. Hidden ones are out of the map,
+## so out of this.
 static func gather(map: SmartFellasMap) -> Dictionary:
 	var markers: Array[Dictionary] = []
 	for node in map.find_children("*", "Marker3D", true, false):
@@ -82,7 +82,8 @@ static func gather(map: SmartFellasMap) -> Dictionary:
 			continue
 		for index in count:
 			var place := scatter.global_transform * MapExporter.copy_place(many, buffer, index)
-			pieces.append({"node": scatter, "words": "Copy %d of %s" % [index + 1, scatter.name], "box": place * bounds, "at": place.origin})
+			# Its words are made only when said: a big map has thousands of copies.
+			pieces.append({"node": scatter, "copy": index + 1, "box": place * bounds, "at": place.origin})
 	for kit: String in map.painted:
 		var values: PackedFloat32Array = map.painted[kit]
 		var bounds: AABB = Kit.info(kit)["bounds"]
@@ -91,6 +92,13 @@ static func gather(map: SmartFellasMap) -> Dictionary:
 			var place := Kit.place_in_list(values, index)
 			pieces.append({"node": null, "words": words, "box": place * bounds, "at": place.origin})
 	return {"markers": markers, "pieces": pieces}
+
+
+## What a piece gather() found is called, in plain words.
+static func words_of(piece: Dictionary) -> String:
+	if piece.has("copy"):
+		return "Copy %d of %s" % [piece["copy"], piece["node"].name]
+	return piece["words"]
 
 
 static func _box_of_meshes(meshes: Array[MeshInstance3D]) -> AABB:
@@ -118,10 +126,12 @@ static func outside(map: SmartFellasMap, gathered: Dictionary) -> Dictionary:
 				break
 	var far: Array[Dictionary] = []
 	var pieces: Array[Dictionary] = []
+	# Found once: finding it looks through the map's children, and a big map has thousands of pieces.
+	var area := map.area_box()
 	for piece: Dictionary in gathered["pieces"]:
 		if not within_reach(piece["at"]):
 			far.append(piece)
-		elif wholly_outside(map, piece["box"]):
+		elif wholly_outside(area, piece["box"]):
 			pieces.append(piece)
 	return {"markers": markers, "far": far, "pieces": pieces}
 
@@ -262,12 +272,12 @@ static func warnings(map: SmartFellasMap, gathered: Dictionary) -> Array[String]
 	var out := outside(map, gathered)
 	var far: Array = out["far"]
 	if far.size() == 1:
-		said.append("%s stands more than %d km from the middle of the map, outlined red in the 3D view. Export leaves it out or refuses it: move it in." % [far[0]["words"], roundi(MapExporter.SCENERY_REACH / 1000.0)])
+		said.append("%s stands more than %d km from the middle of the map, outlined red in the 3D view. Export leaves it out or refuses it: move it in." % [words_of(far[0]), roundi(MapExporter.SCENERY_REACH / 1000.0)])
 	elif far.size() > 1:
 		said.append("%d pieces stand more than %d km from the middle of the map, outlined red in the 3D view. Export leaves them out or refuses them: move them in." % [far.size(), roundi(MapExporter.SCENERY_REACH / 1000.0)])
 	var pieces: Array = out["pieces"]
 	if pieces.size() == 1:
-		said.append("%s stands wholly outside the play area, outlined amber in the 3D view. Swimmers can see it but never reach it." % pieces[0]["words"])
+		said.append("%s stands wholly outside the play area, outlined amber in the 3D view. Swimmers can see it but never reach it." % words_of(pieces[0]))
 	elif pieces.size() > 1:
 		said.append("%d pieces stand wholly outside the play area, outlined amber in the 3D view. Swimmers can see them but never reach them." % pieces.size())
 	var fitted := fit(map, gathered)

@@ -42,6 +42,8 @@ const ROCK_PICTURE := "res://addons/smart_fellas_maps/textures/surfaces/rock_gre
 const MOSS_PICTURE := "res://addons/smart_fellas_maps/textures/surfaces/rock_mossy.png"
 ## The name a seabed mesh goes by, as the exporter has it.
 const SEABED := "Seabed"
+## Godot's editor setting for drawing every frame, whatever changed.
+const UPDATE_CONTINUOUSLY := "interface/editor/update_continuously"
 
 ## How a material lets what's behind it show.
 enum Seen { SOLID, CUT_OUT, DITHERED }
@@ -99,10 +101,19 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
-	if _time_held:
+	if _time_held or not clock_runs():
 		return
 	_seconds = fposmod(_seconds + delta, WATER_PERIOD)
 	RenderingServer.global_shader_parameter_set_override("sf_time", _seconds)
+
+
+## Whether the water moves. In the editor that has Godot draw the whole map again every frame, a whole core
+## on a map of thousands of pieces with nothing changing, so it moves only while Godot draws all the time
+## anyway: Editor Settings, Interface > Editor > Update Continuously.
+static func clock_runs() -> bool:
+	if not Engine.is_editor_hint() or not Engine.has_singleton("EditorInterface"):
+		return true
+	return EditorInterface.get_editor_settings().get_setting(UPDATE_CONTINUOUSLY)
 
 
 ## Stops the water's clock at `seconds`, to hold a picture beside the same moment in the game.
