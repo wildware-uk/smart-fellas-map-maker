@@ -2,6 +2,10 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.08-ac0615a
+
+- Fixed maps drawing as a plain white level after an update: the add-on now adds the water settings an older project is missing.
+
 ## 2026.11.08-710d255
 
 - Painting on big maps is smooth again: the Map panel catches up when a stroke ends, not on every frame of it, and the brush no longer reads the whole map at the start and end of each stroke.

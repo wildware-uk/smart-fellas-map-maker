@@ -26,7 +26,7 @@ It's a Godot project with our add-on already switched on. The add-on gives Godot
 
 ## Update it
 
-The **Map** panel says which version you have, under **This add-on**, at the bottom. Once a day, when Godot opens, it asks GitHub whether a newer one is out. If one is, a banner at the top of the **Map** panel says "Update available", with **Update** and **What's new**. Press **Update**, then **Restart Godot**. Only the add-on's own folder (`addons/smart_fellas_maps`) changes: your maps and models stay as they are. Each download is checked against the SHA-256 published with its release, and refused if it doesn't match.
+The **Map** panel says which version you have, under **This add-on**, at the bottom. Once a day, when Godot opens, it asks GitHub whether a newer one is out. If one is, a banner at the top of the **Map** panel says "Update available", with **Update** and **What's new**. Press **Update**, then **Restart Godot**. Only the add-on's own folder (`addons/smart_fellas_maps`) changes: your maps and models stay as they are. If a new version's water needs a setting your `project.godot` lacks, the add-on adds it there itself when Godot starts. Each download is checked against the SHA-256 published with its release, and refused if it doesn't match.
 
 **Check for updates**, under **This add-on**, or **Project > Tools > Smart Fellas: Check for updates** asks straight away. Untick **Check for updates automatically** if you'd rather it didn't ask by itself. With no internet, it says nothing.
 

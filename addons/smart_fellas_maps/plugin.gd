@@ -15,6 +15,7 @@ const MapTester := preload("map_tester.gd")
 const MarkerGizmos := preload("marker_gizmos.gd")
 const MarkerTool := preload("marker_tool.gd")
 const SeabedTool := preload("seabed_tool.gd")
+const ShaderGlobals := preload("water/shader_globals.gd")
 const PaintPanel := preload("paint_panel.gd")
 const PlayAreaGizmos := preload("play_area_gizmos.gd")
 const ZoneGizmos := preload("zone_gizmos.gd")
@@ -78,6 +79,7 @@ var _drops_awake := false
 
 
 func _enter_tree() -> void:
+	_add_missing_shader_globals()
 	_button = Button.new()
 	_button.text = "Export Map"
 	_button.tooltip_text = "Write this map straight into Smart Fellas, where it shows under My maps, and check it with the game. Exporting again replaces it."
@@ -214,6 +216,19 @@ func _exit_tree() -> void:
 	for drop in _drops:
 		drop.queue_free()
 	_drops.clear()
+
+
+## A project that came with an older add-on lacks the water's newer shader settings, which live in its
+## project.godot and not in the add-on's folder. Without them the map draws plain white (#294).
+func _add_missing_shader_globals() -> void:
+	var added := ShaderGlobals.add_missing()
+	if added.is_empty():
+		return
+	var saved := ProjectSettings.save()
+	if saved != OK:
+		push_warning("Smart Fellas Maps: added the water's shader settings %s for now, but couldn't save them into project.godot: %s." % [", ".join(added), error_string(saved)])
+		return
+	print("Smart Fellas Maps: added the water's shader settings this project lacked: %s." % ", ".join(added))
 
 
 ## `layout_key` is the name Godot keeps where it is under, or its title if that's "".
