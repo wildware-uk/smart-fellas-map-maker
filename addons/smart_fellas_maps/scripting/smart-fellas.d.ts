@@ -35,10 +35,20 @@
 // counts and the lobby settings it offers) and a scripts/ folder laid out as a map's. The host picks
 // the mode in the lobby, apart from the map, and the mode's scripts run beside the map's in a world
 // of their own: each numbers the players for itself. The mode's run first each tick.
-// While a mode is played, the game's own win checks are off: the mode ends the round with
-// game.endRound(). When the clock runs out (and isn't held), the mode hears onTimeUp; if it doesn't
-// end the round on that tick, the round ends as a draw. A mode whose script stops ends a round being
-// played as a draw, and the match goes back to Classic.
+// Every round is played by a mode, Classic and Infected included: they ship as modes in the same
+// shape. The game has no win checks of its own: the mode ends the round with game.endRound(). A
+// round can't start until the mode's script is running. When the clock runs out (and isn't held),
+// the mode hears onTimeUp; if it doesn't end the round on that tick, the round ends as a draw. A
+// mode whose script stops ends a round being played as a draw, and the match goes back to Classic.
+//
+// mode.json may also say, each optional:
+// - "minDivers", "minOctopuses": the fewest players on each team a round may start with (0);
+// - "teamLines": { "octopus": "...", "diver": "..." }, the lines under each team's name in the
+//   lobby, and "startLines" the same shape, the lines under the banner as the hunt starts (1 to 60
+//   characters each);
+// - "look": "catches" or "turns" for the game's own octopuses-left count and results (Classic's,
+//   Infected's), or left out for the mode's own scoreboard and banner;
+// - "revives": true if the lobby's Revives setting applies: a netted octopus may be freed.
 // The calls marked "for game modes" change the round's rules. A map's script may use them too, and
 // the mode then hears what happened through its own events (onTeamChange, onRoundEnd).
 
@@ -170,8 +180,10 @@ interface Player {
 
   /**
    * Moves them to the other team, at any time (for game modes). One alive gets a fresh body at the
-   * new team's start at once; one waiting for a round waits on the new team. They go back to the
-   * team they chose when the lobby comes back.
+   * new team's start at once (from onRoundStart, at the start the round gives that team, as if they
+   * had chosen it); one waiting for a round waits on the new team. They go back to the team they
+   * chose when the lobby comes back. It takes effect after this tick: until the next one they still
+   * read as on their old team.
    */
   setTeam(team: Team): void;
   /**
@@ -358,7 +370,9 @@ interface Game {
   setBots(team: Team, count: number): void;
   /**
    * What being caught or killed does to a team's players, with the wait for "respawn" and "turn": 0
-   * to 600 seconds, or the lobby's respawn time when left out (for game modes).
+   * to 600 seconds, or the lobby's respawn time when left out (for game modes). Until a script sets
+   * it, octopuses are "held" and divers "respawn". A player who turns is marked as turned for the
+   * rest of the round, on the scoreboard and the results.
    */
   setFate(team: Team, fate: Fate, seconds?: number): void;
   /** Where a team's players come back, at a point within 1000 m of the map's middle (for game modes). */
