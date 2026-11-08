@@ -386,6 +386,8 @@ interface Game {
   /**
    * Names the live scoreboard's columns, up to 6 of 1 to 16 characters, each once, shown beside each
    * player's name and score during the round and on the results. None hides it (for game modes).
+   * Every person is listed; a bot only once the match's scripts give it a score or a cell
+   * (setScore, addScore, setCell), even 0 or "", so bots a mode leaves alone stay off.
    */
   scoreboard(...columns: string[]): void;
   /** Shows everyone a banner across the top: 0 to 80 characters, "" to clear it (for game modes). */
