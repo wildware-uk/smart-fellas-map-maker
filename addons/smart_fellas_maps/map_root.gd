@@ -152,11 +152,16 @@ var area_depth: float:
 ## Where the Populate button dresses: "both", "seabed" or "meshes", as Recipes.SURFACES.
 @export_storage var populate_surfaces := "both"
 
-## The sculpted seabed: how far its grid runs from the middle each way, how many points each side has, the
-## height of each a row at a time, and which squares are rock. With no grid, the seabed is flat.
+## The sculpted seabed: how far its grid runs from its middle each way, where that middle is as (x, z), how
+## many points each side has, the height of each a row at a time, and which squares are rock. With no grid,
+## the seabed is flat. A grid made before it could sit anywhere has its middle at the map's (#264).
 @export_storage var seabed_reach := 0.0:
 	set(value):
 		seabed_reach = value
+		show_seabed()
+@export_storage var seabed_middle := Vector2.ZERO:
+	set(value):
+		seabed_middle = value
 		show_seabed()
 @export_storage var seabed_side := 0:
 	set(value):
@@ -274,7 +279,7 @@ func show_seabed_rock(rock: PackedByteArray) -> void:
 func _can_draw_in_part() -> bool:
 	if _sculpted_sand == null:
 		return false
-	return _ground_grid != null and _ground_reach == area_reach() and _ground_grid.side == seabed_side and _ground_grid.reach == seabed_reach and seabed_heights.size() == seabed_side * seabed_side and seabed_rock.size() == (seabed_side - 1) * (seabed_side - 1)
+	return _ground_grid != null and _ground_reach == area_reach() and _ground_grid.side == seabed_side and _ground_grid.reach == seabed_reach and _ground_grid.centre == seabed_middle and seabed_heights.size() == seabed_side * seabed_side and seabed_rock.size() == (seabed_side - 1) * (seabed_side - 1)
 
 
 func _fill_every_ground() -> void:

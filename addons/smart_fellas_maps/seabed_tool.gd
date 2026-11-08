@@ -52,6 +52,7 @@ var _heights_before := PackedFloat32Array()
 var _rock_before := PackedByteArray()
 var _side_before := 0
 var _reach_before := 0.0
+var _middle_before := Vector2.ZERO
 var _noise := FastNoiseLite.new()
 var _stroke_number := 0
 var _told_too_steep := false
@@ -132,7 +133,7 @@ func tick(delta: float) -> void:
 ## Whether something else, such as undo, has changed the seabed since this stroke began. Ending the stroke
 ## then would put back what it had to begin with.
 func _lost_its_place() -> bool:
-	return map.seabed_side != _grid.side or map.seabed_heights != _grid.heights or map.seabed_rock != _grid.rock
+	return map.seabed_side != _grid.side or map.seabed_middle != _grid.centre or map.seabed_heights != _grid.heights or map.seabed_rock != _grid.rock
 
 
 ## Starts a stroke, making the map's grid first if its seabed is flat. A test may call this.
@@ -141,6 +142,7 @@ func begin_stroke() -> void:
 	_rock_before = map.seabed_rock
 	_side_before = map.seabed_side
 	_reach_before = map.seabed_reach
+	_middle_before = map.seabed_middle
 	if SeabedGrid.of(map) == null:
 		_make_the_grid()
 	map.seabed_heights = map.seabed_heights.duplicate()
@@ -153,11 +155,15 @@ func begin_stroke() -> void:
 	_stroking = true
 
 
+## The grid sits over the play area, wherever the box is, so its points are as close as the box's size lets
+## them be (#264).
 func _make_the_grid() -> void:
 	var seabed := map.find_child("Seabed", true, true) as Node3D
 	var height := seabed.global_position.y if seabed != null else 0.0
-	var reach: float = map.area_reach()
+	var box: AABB = map.area_box()
+	var reach := maxf(box.size.x, box.size.z) * 0.5
 	var side := SeabedGrid.side_for(reach)
+	map.seabed_middle = Vector2(box.get_center().x, box.get_center().z)
 	map.seabed_reach = reach
 	map.seabed_side = side
 	var heights := PackedFloat32Array()
@@ -266,8 +272,10 @@ func flatten() -> void:
 	_rock_before = map.seabed_rock
 	_side_before = map.seabed_side
 	_reach_before = map.seabed_reach
+	_middle_before = map.seabed_middle
 	map.seabed_side = 0
 	map.seabed_reach = 0.0
+	map.seabed_middle = Vector2.ZERO
 	map.seabed_heights = PackedFloat32Array()
 	map.seabed_rock = PackedByteArray()
 	_commit("Flatten the seabed")
@@ -282,9 +290,10 @@ func _commit(words: String) -> void:
 	var after_rock := map.seabed_rock
 	var after_side := map.seabed_side
 	var after_reach := map.seabed_reach
+	var after_middle := map.seabed_middle
 	var before: RefCounted = null
 	if _side_before >= 2:
-		before = SeabedGrid.from_numbers(_reach_before, _side_before, _heights_before, _rock_before)
+		before = SeabedGrid.from_numbers(_reach_before, _side_before, _heights_before, _rock_before, _middle_before)
 	var after: RefCounted = SeabedGrid.of(map)
 	var flat := _flat_height()
 	history.create_action(words)
@@ -292,6 +301,8 @@ func _commit(words: String) -> void:
 	history.add_undo_property(map, "seabed_side", _side_before)
 	history.add_do_property(map, "seabed_reach", after_reach)
 	history.add_undo_property(map, "seabed_reach", _reach_before)
+	history.add_do_property(map, "seabed_middle", after_middle)
+	history.add_undo_property(map, "seabed_middle", _middle_before)
 	history.add_do_property(map, "seabed_heights", after_heights)
 	history.add_undo_property(map, "seabed_heights", _heights_before)
 	history.add_do_property(map, "seabed_rock", after_rock)

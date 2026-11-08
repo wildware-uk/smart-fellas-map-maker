@@ -1,8 +1,10 @@
 @tool
 extends RefCounted
-## A sculpted seabed: a square grid of heights kept on the map, read and changed here. Past the grid's edge
-## the seabed runs on flat at the height of the edge. The game builds the same thing from the same numbers,
-## in its sculpted seabed, which says how painted rock gets its cut corners and its moss.
+## A sculpted seabed: a square grid of heights kept on the map, read and changed here. The grid sits round
+## its own middle, over the play area wherever that is, or round the map's middle on a map made before it
+## could (#264). Past the grid's edge the seabed runs on flat at the height of the edge. The game builds the
+## same thing from the same numbers, in its sculpted seabed, which says how painted rock gets its cut corners
+## and its moss.
 
 ## How far apart the points are to begin with, in metres, and the fewest and most a side of the grid has.
 const SPACING := 1.0
@@ -25,6 +27,10 @@ const CORNERS: Array[Vector2i] = [Vector2i(-1, -1), Vector2i(1, -1), Vector2i(1,
 
 
 var reach: float
+## The grid's middle, as (x, z).
+var centre: Vector2
+## Its first point, the corner towards -X and -Z, as (x, z).
+var origin: Vector2
 var side: int
 var heights: PackedFloat32Array
 var rock: PackedByteArray
@@ -37,13 +43,15 @@ var highest := 0.0
 static func of(map: SmartFellasMap) -> RefCounted:
 	if map.seabed_side < 2 or map.seabed_heights.size() != map.seabed_side * map.seabed_side:
 		return null
-	return from_numbers(map.seabed_reach, map.seabed_side, map.seabed_heights, map.seabed_rock)
+	return from_numbers(map.seabed_reach, map.seabed_side, map.seabed_heights, map.seabed_rock, map.seabed_middle)
 
 
 ## A grid from its numbers, which must agree in size.
-static func from_numbers(reach_given: float, side_given: int, heights_given: PackedFloat32Array, rock_given: PackedByteArray) -> RefCounted:
+static func from_numbers(reach_given: float, side_given: int, heights_given: PackedFloat32Array, rock_given: PackedByteArray, middle_given := Vector2.ZERO) -> RefCounted:
 	var grid: RefCounted = (load("res://addons/smart_fellas_maps/seabed_grid.gd") as GDScript).new()
 	grid.reach = reach_given
+	grid.centre = middle_given
+	grid.origin = middle_given - Vector2(reach_given, reach_given)
 	grid.side = side_given
 	grid.heights = heights_given
 	grid.rock = rock_given
@@ -52,7 +60,7 @@ static func from_numbers(reach_given: float, side_given: int, heights_given: Pac
 	return grid
 
 
-## How many points a new grid has along each side, for a grid reaching this far from the middle.
+## How many points a new grid has along each side, for a grid reaching this far from its middle.
 static func side_for(reach: float) -> int:
 	return clampi(roundi(reach * 2.0 / SPACING) + 1, FEWEST_A_SIDE, MOST_A_SIDE)
 
@@ -68,19 +76,19 @@ func measure() -> void:
 ## The grid's point nearest (x, z), kept to the grid: x, then z, as whole numbers.
 func nearest_point(x: float, z: float) -> Vector2i:
 	return Vector2i(
-		clampi(roundi((x + reach) / spacing), 0, side - 1),
-		clampi(roundi((z + reach) / spacing), 0, side - 1)
+		clampi(roundi((x - origin.x) / spacing), 0, side - 1),
+		clampi(roundi((z - origin.y) / spacing), 0, side - 1)
 	)
 
 
 func point_at(column: int, row: int) -> Vector3:
-	return Vector3(-reach + column * spacing, heights[row * side + column], -reach + row * spacing)
+	return Vector3(origin.x + column * spacing, heights[row * side + column], origin.y + row * spacing)
 
 
 ## The height of the seabed at (x, z), on the same two triangles the game has in each square.
 func height_at(x: float, z: float) -> float:
-	var across := clampf((x + reach) / spacing, 0.0, side - 1.0)
-	var down := clampf((z + reach) / spacing, 0.0, side - 1.0)
+	var across := clampf((x - origin.x) / spacing, 0.0, side - 1.0)
+	var down := clampf((z - origin.y) / spacing, 0.0, side - 1.0)
 	var column := mini(floori(across), side - 2)
 	var row := mini(floori(down), side - 2)
 	var along := across - column
@@ -105,8 +113,8 @@ func normal_at(x: float, z: float) -> Vector3:
 
 ## The number of the square holding (x, z), or -1 if it's past the grid.
 func cell_at(x: float, z: float) -> int:
-	var across := (x + reach) / spacing
-	var down := (z + reach) / spacing
+	var across := (x - origin.x) / spacing
+	var down := (z - origin.y) / spacing
 	if across < 0.0 or down < 0.0 or across >= side - 1 or down >= side - 1:
 		return -1
 	return floori(down) * (side - 1) + floori(across)
@@ -118,8 +126,8 @@ func is_rock_at(x: float, z: float) -> bool:
 
 ## What the ground at (x, z) is made of, a Painted, cut at the corners as the mesh is.
 func ground_at(x: float, z: float) -> int:
-	var across := (x + reach) / spacing
-	var down := (z + reach) / spacing
+	var across := (x - origin.x) / spacing
+	var down := (z - origin.y) / spacing
 	if across < 0.0 or down < 0.0 or across >= side - 1 or down >= side - 1:
 		return Painted.SAND
 	var column := floori(across)
@@ -230,24 +238,32 @@ func _refine(from: Vector3, to: Vector3, above: float, below: float) -> Vector3:
 
 ## The meshes' numbers: {"points", "normals", "pictures", "sand", "rock", "moss"}, where the last three are
 ## lists of triangles. The game's SeabedShape::of does the same, though its points may come in another order.
-## `area_reach` is how far the play area's farthest edge is from the middle of the map.
+## `area_reach` is how far the play area's farthest edge is from the middle of the map. The ground runs on
+## that far and BEYOND past it from the map's middle, and at least a metre past the grid, as the game's.
 func shape(area_reach: float) -> Dictionary:
-	var outer := maxf(area_reach + BEYOND, reach + 1.0)
+	var outer := area_reach + BEYOND
 	var wide := side + 2
 	var points := PackedVector3Array()
 	var normals := PackedVector3Array()
 	points.resize(wide * wide)
 	normals.resize(wide * wide)
-	var along := PackedFloat32Array()
-	along.resize(wide)
-	along[0] = -outer
-	along[wide - 1] = outer
-	for index in side:
-		along[index + 1] = -reach + index * spacing
-	var made := {"points": points, "normals": normals, "along": along}
+	var made := {"points": points, "normals": normals, "across": _along(origin.x, outer), "down": _along(origin.y, outer)}
 	_fill_points(made, 0, wide - 1, 0, wide - 1)
 	recut(made)
 	return made
+
+
+## Where the mesh's points stand along one way, from the grid's first point there: a point past each end of
+## the grid, and the grid's own between.
+func _along(first: float, outer: float) -> PackedFloat32Array:
+	var wide := side + 2
+	var along := PackedFloat32Array()
+	along.resize(wide)
+	along[0] = minf(-outer, first - 1.0)
+	along[wide - 1] = maxf(outer, first + reach * 2.0 + 1.0)
+	for index in side:
+		along[index + 1] = first + index * spacing
+	return along
 
 
 ## Brings `made`, from `shape`, up to date with the heights between grid points `low` and `high`, and
@@ -264,14 +280,15 @@ func _fill_points(made: Dictionary, first_row: int, last_row: int, first_column:
 	var wide := side + 2
 	var points: PackedVector3Array = made["points"]
 	var normals: PackedVector3Array = made["normals"]
-	var along: PackedFloat32Array = made["along"]
+	var across: PackedFloat32Array = made["across"]
+	var down: PackedFloat32Array = made["down"]
 	for row in range(first_row, last_row + 1):
 		var row_in := clampi(row - 1, 0, side - 1)
 		var ahead_row := clampi(row - 2, 0, side - 1) * side
 		var behind_row := clampi(row, 0, side - 1) * side
 		for column in range(first_column, last_column + 1):
 			var column_in := clampi(column - 1, 0, side - 1)
-			points[row * wide + column] = Vector3(along[column], heights[row_in * side + column_in], along[row])
+			points[row * wide + column] = Vector3(across[column], heights[row_in * side + column_in], down[row])
 			var left := heights[row_in * side + clampi(column - 2, 0, side - 1)]
 			var right := heights[row_in * side + clampi(column, 0, side - 1)]
 			var ahead := heights[ahead_row + column_in]

@@ -23,6 +23,9 @@ const MODELS_FORMAT := 4
 ## The game's format for a map whose play area is a box placed anywhere (a PlayArea node), and otherwise as
 ## NO_SEABED_FORMAT.
 const BOX_FORMAT := 6
+## The game's GRID_MIDDLE_FORMAT, for a box map whose sculpted grid sits round a middle of its own, and
+## otherwise as BOX_FORMAT.
+const GRID_MIDDLE_FORMAT := 7
 ## Where a map's own models go in its package.
 const ASSETS_FOLDER := "assets"
 ## The end of a map package's file name: Smart Fellas Map.
@@ -1169,6 +1172,13 @@ static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
 	# The sculpted ground is scenery past the play area, so it may reach as far as anything may stand (#245).
 	if not (root.seabed_reach >= 1.0 and root.seabed_reach <= SCENERY_REACH):
 		scene.problems.append("The sculpted seabed reaches %s m from the middle. It must be from 1 to %s." % [root.seabed_reach, SCENERY_REACH])
+	var middle: Vector2 = root.seabed_middle
+	var farthest := maxf(absf(middle.x), absf(middle.y)) + root.seabed_reach
+	if not middle.is_finite():
+		scene.problems.append("The sculpted seabed's middle isn't a real place. Press Flatten in the Map panel.")
+		return
+	if farthest > SCENERY_REACH:
+		scene.problems.append("The sculpted seabed reaches %.0f m from the middle of the map. It must stay within %d km. Press Flatten in the Map panel." % [farthest, roundi(SCENERY_REACH / 1000.0)])
 	var spacing: float = root.seabed_reach * 2.0 / (side - 1)
 	# Inside the play area the ground stays between its floor and ceiling, as the game's check_sculpted;
 	# outside, it's scenery, and only as far as anything may stand.
@@ -1183,8 +1193,8 @@ static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
 		if absf(height) > SCENERY_REACH:
 			scene.problems.append("The sculpted seabed has a height of %.1f. It must be within %d km of the middle of the map." % [height, roundi(SCENERY_REACH / 1000.0)])
 			return
-		var x: float = -root.seabed_reach + (index % side) * spacing
-		var z: float = -root.seabed_reach + (index / side) * spacing
+		var x: float = middle.x - root.seabed_reach + (index % side) * spacing
+		var z: float = middle.y - root.seabed_reach + (index / side) * spacing
 		if x >= box.position.x and x <= box.end.x and z >= box.position.z and z <= box.end.z:
 			highest = maxf(highest, height)
 			lowest = minf(lowest, height)
@@ -2939,7 +2949,11 @@ static func _seabed_text(root: SmartFellasMap, scene: Scene) -> String:
 	for cell in root.seabed_rock.size():
 		if root.seabed_rock[cell] != 0:
 			rock.append(str(cell))
-	return "Sculpted((reach: %s, side: %d, heights: [%s], rock_cells: [%s]))" % [_number(root.seabed_reach), root.seabed_side, ", ".join(heights), ", ".join(rock)]
+	# A grid round the map's middle says nothing of where it is, so its file reads as it did before (#264).
+	var middle := ""
+	if root.seabed_middle != Vector2.ZERO:
+		middle = " middle: (%s, %s)," % [_number(root.seabed_middle.x), _number(root.seabed_middle.y)]
+	return "Sculpted((reach: %s,%s side: %d, heights: [%s], rock_cells: [%s]))" % [_number(root.seabed_reach), middle, root.seabed_side, ", ".join(heights), ", ".join(rock)]
 
 
 ## Which of the map's own models are sand or silt, by their names in the package, or nothing if none is, as
@@ -3039,6 +3053,9 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 		format = NO_SEABED_FORMAT
 	if root.play_area() != null:
 		format = BOX_FORMAT
+	# A grid round the map's middle keeps the format older games read (#264).
+	if root.play_area() != null and root.has_seabed and root.seabed_side != 0 and root.seabed_middle != Vector2.ZERO:
+		format = GRID_MIDDLE_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]
 	if root.play_area() != null:
 		var area := root.area_box()
