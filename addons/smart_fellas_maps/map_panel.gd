@@ -8,7 +8,7 @@ extends VBoxContainer
 const MapExporter := preload("map_exporter.gd")
 const MarkerKinds := preload("marker_kinds.gd")
 const PlayArea := preload("play_area.gd")
-const Populate := preload("populate.gd")
+const PopulateGroups := preload("populate_groups.gd")
 const Recipes := preload("recipes.gd")
 const SeabedTool := preload("seabed_tool.gd")
 const UpdateBanner := preload("update_banner.gd")
@@ -107,6 +107,9 @@ var _notes: ScrollContainer
 var _show_area: CheckBox
 var _area_shown := true
 var _fit_said: Label
+## Whether show_map left the map unread while the panel's tab was hidden behind Paint or Water. Reading it
+## takes a tenth of a second or more on a map of thousands of pieces, which every map's opening paid (#291).
+var _unread := false
 
 
 func _ready() -> void:
@@ -163,7 +166,20 @@ func _ready() -> void:
 	_warnings.add_theme_color_override("font_color", WARNING_COLOUR)
 	notes.minimum_size_changed.connect(_fit_notes)
 	resized.connect(_fit_notes)
+	var dock := get_parent() as Control
+	if dock != null:
+		dock.visibility_changed.connect(_on_tab_shown)
 	show_map()
+
+
+func _tab_shown() -> bool:
+	var dock := get_parent() as Control
+	return dock == null or dock.is_visible_in_tree()
+
+
+func _on_tab_shown() -> void:
+	if _unread and _tab_shown():
+		show_map()
 
 
 ## Gives the problems and warnings the height they need, up to NOTES_SHARE of the panel.
@@ -274,10 +290,10 @@ func _add_populate(column: Control) -> void:
 	_label(column, "Dresses the whole map with what's ticked, on the seabed and on your pieces and models, walls and overhangs too. Then fix it by hand. Doing it again only redoes its own work in what's ticked: what you placed or painted yourself stays.")
 	var groups := GridContainer.new()
 	groups.columns = 2
-	for group: String in Populate.GROUPS:
+	for group: String in PopulateGroups.GROUPS:
 		var check := CheckBox.new()
-		check.text = Populate.GROUP_WORDS[group]
-		check.tooltip_text = Populate.GROUP_TIPS[group]
+		check.text = PopulateGroups.GROUP_WORDS[group]
+		check.tooltip_text = PopulateGroups.GROUP_TIPS[group]
 		check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		check.toggled.connect(_on_populate_group_toggled.bind(group))
 		_populate_groups[group] = check
@@ -348,7 +364,12 @@ func _on_populate() -> void:
 	var map := _map()
 	if map == null:
 		return
-	_say_populated(Populate.dress(map, int(_seed_number.value), undo, map.populate_surfaces, map.populate_groups))
+	_say_populated(_populate().dress(map, int(_seed_number.value), undo, map.populate_surfaces, map.populate_groups))
+
+
+## Populate, loaded on the first press rather than compiled as the editor opens (#291).
+static func _populate() -> GDScript:
+	return load("res://addons/smart_fellas_maps/populate.gd")
 
 
 func _on_try_again() -> void:
@@ -360,7 +381,7 @@ func _on_clear_populated() -> void:
 	var map := _map()
 	if map == null:
 		return
-	_say_populated(Populate.clear(map, undo, map.populate_groups))
+	_say_populated(_populate().clear(map, undo, map.populate_groups))
 
 
 func _on_populate_group_toggled(on: bool, group: String) -> void:
@@ -532,6 +553,9 @@ func show_map() -> void:
 	var map := _map()
 	visible = map != null
 	if map == null:
+		return
+	_unread = not _tab_shown()
+	if _unread:
 		return
 	_showing = true
 	if _name_edit.text != map.map_name:

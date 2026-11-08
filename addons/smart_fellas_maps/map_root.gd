@@ -146,7 +146,7 @@ var area_depth: float:
 ## The pieces the Populate button added, which are all in `painted` too, so that it can redo its own work
 ## and nothing else.
 @export_storage var populated: Dictionary[String, PackedFloat32Array] = {}
-## What the Populate button places here, by group, as Populate.GROUPS names them. Only scenery, unless the
+## What the Populate button places here, by group, as populate_groups.gd names them. Only scenery, unless the
 ## map maker ticks the others, so that markers placed by hand as part of the design are never Populate's.
 @export_storage var populate_groups: Dictionary[String, bool] = {"scenery": true, "food": false, "creatures": false, "spawns": false}
 ## Where the Populate button dresses: "both", "seabed" or "meshes", as Recipes.SURFACES.

@@ -8,10 +8,7 @@ const Brush := preload("brush.gd")
 const BrushTool := preload("brush_tool.gd")
 const Carrier := preload("carrier.gd")
 const CostBar := preload("cost_bar.gd")
-const GameFinder := preload("game_finder.gd")
-const MapExporter := preload("map_exporter.gd")
 const MapPanel := preload("map_panel.gd")
-const MapTester := preload("map_tester.gd")
 const MarkerGizmos := preload("marker_gizmos.gd")
 const MarkerTool := preload("marker_tool.gd")
 const SeabedTool := preload("seabed_tool.gd")
@@ -22,9 +19,12 @@ const ZoneGizmos := preload("zone_gizmos.gd")
 const TriggerGizmos := preload("trigger_gizmos.gd")
 const PieceDrop := preload("piece_drop.gd")
 const PiecesPanel := preload("pieces_panel.gd")
-const TestResults := preload("test_results.gd")
 const UpdateBanner := preload("update_banner.gd")
 const WaterPanel := preload("water_panel.gd")
+## Export Map, Test Map and what they found, loaded on the first press. Godot compiles every script the
+## add-on preloads before the editor can open a map, so these would slow every opening (#291).
+const MAP_TESTER := "res://addons/smart_fellas_maps/map_tester.gd"
+const TEST_RESULTS := "res://addons/smart_fellas_maps/test_results.gd"
 
 ## Where the Map, Paint and Water panels go: under the Inspector, in a dock of their own. Beside the Inspector,
 ## Node and Groups, a narrow dock hid their tabs behind its arrows.
@@ -388,7 +388,7 @@ func _on_scene_changed(scene: Node) -> void:
 	# The Map panel shares the play area's gathering of the map's pieces: the last map's mustn't show here.
 	_play_area.forget()
 	_water_panel.show_map()
-	_map_panel.show_map()
+	# The Map panel reads the new map once, in _process, as _map_changed below asks.
 	var map := scene as SmartFellasMap
 	_watch_map(map)
 	_tool.set_map(map)
@@ -495,12 +495,12 @@ func _test() -> void:
 	var result := await _export_and_check("")
 	if _closed:
 		return
-	if result["state"] == MapTester.State.NO_MAPS_FOLDER:
+	if result["state"] == _tester().State.NO_MAPS_FOLDER:
 		# A game too old to say where its maps go can still try the map out.
-		result = await _export_and_check(MapExporter.default_out_folder())
+		result = await _export_and_check(_tester().MapExporter.default_out_folder())
 		if _closed:
 			return
-	if result["state"] != MapTester.State.FINE:
+	if result["state"] != _tester().State.FINE:
 		_show_results("Test Map", result)
 		return
 	for warning: Dictionary in result["lines"]:
@@ -513,13 +513,14 @@ func _export_and_check(folder: String) -> Dictionary:
 	_button.disabled = true
 	_folder_button.disabled = true
 	_test_button.disabled = true
-	var chosen := _setting(GameFinder.CHOSEN_KEY)
+	var tester := _tester()
+	var chosen := _setting(tester.GameFinder.CHOSEN_KEY)
 	var scene := EditorInterface.get_edited_scene_root()
 	var result: Dictionary
 	if folder.is_empty():
-		result = await MapTester.export_into_game(scene, chosen, _setting(MapTester.CHOSEN_MAPS_KEY), get_tree())
+		result = await tester.export_into_game(scene, chosen, _setting(tester.CHOSEN_MAPS_KEY), get_tree())
 	else:
-		result = await MapTester.export_and_check(scene, folder, chosen, get_tree())
+		result = await tester.export_and_check(scene, folder, chosen, get_tree())
 	if _closed:
 		return result
 	_button.disabled = false
@@ -528,29 +529,34 @@ func _export_and_check(folder: String) -> Dictionary:
 	return result
 
 
+static func _tester() -> GDScript:
+	return load(MAP_TESTER)
+
+
 func _setting(key: String) -> String:
 	var settings := EditorInterface.get_editor_settings()
 	return settings.get_setting(key) if settings.has_setting(key) else ""
 
 
 func _show_results(title: String, result: Dictionary) -> void:
-	var dialog := TestResults.new()
+	var results: GDScript = load(TEST_RESULTS)
+	var dialog: AcceptDialog = results.new()
 	dialog.title = title
 	dialog.show_result(result)
 	dialog.game_chosen.connect(_on_game_chosen.bind(title))
 	dialog.maps_folder_chosen.connect(_on_maps_folder_chosen.bind(title))
-	EditorInterface.popup_dialog_centered(dialog, TestResults.SIZE)
+	EditorInterface.popup_dialog_centered(dialog, results.SIZE)
 
 
 ## The game has been found, so does again what the map maker asked for.
 func _on_game_chosen(program: String, asked_by: String) -> void:
-	EditorInterface.get_editor_settings().set_setting(GameFinder.CHOSEN_KEY, program)
+	EditorInterface.get_editor_settings().set_setting(_tester().GameFinder.CHOSEN_KEY, program)
 	_again(asked_by)
 
 
 ## The map maker has shown where the game keeps its maps, so that is remembered and tried again.
 func _on_maps_folder_chosen(folder: String, asked_by: String) -> void:
-	EditorInterface.get_editor_settings().set_setting(MapTester.CHOSEN_MAPS_KEY, folder)
+	EditorInterface.get_editor_settings().set_setting(_tester().CHOSEN_MAPS_KEY, folder)
 	_again(asked_by)
 
 
@@ -565,7 +571,7 @@ func _again(asked_by: String) -> void:
 func _open_the_game(game: String, folder: String) -> void:
 	if _game_process != -1 and OS.is_process_running(_game_process):
 		OS.kill(_game_process)
-	_game_process = MapTester.play(game, folder)
+	_game_process = _tester().play(game, folder)
 	var toaster := EditorInterface.get_editor_toaster()
 	if _game_process == -1:
 		toaster.push_toast("Can't start the game at %s." % game, EditorToaster.SEVERITY_ERROR)

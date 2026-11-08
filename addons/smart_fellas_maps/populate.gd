@@ -13,6 +13,7 @@ extends RefCounted
 
 const Brush := preload("brush.gd")
 const Kit := preload("kit.gd")
+const PopulateGroups := preload("populate_groups.gd")
 const MapExporter := preload("map_exporter.gd")
 const MarkerKinds := preload("marker_kinds.gd")
 const Recipes := preload("recipes.gd")
@@ -90,16 +91,7 @@ const GROWS_ON_BIG_MAPS := 1.3
 const GARDEN_SHARE := 0.12
 const GARDEN_RADII := Vector2(10.0, 20.0)
 const GARDEN_TRIES := 20
-## What it can place, in groups the map maker ticks: scenery, food, creatures and spawns, and the group of
-## each kind of marker it adds.
-const GROUPS := ["scenery", "food", "creatures", "spawns"]
-const GROUP_WORDS := {"scenery": "Scenery", "food": "Food", "creatures": "Creatures", "spawns": "Spawns"}
-const GROUP_TIPS := {
-	"scenery": "Plants, coral and rocks.",
-	"food": "Food patches. Leave it off to place food yourself, as part of the map's design.",
-	"creatures": "Fish, stingray stops and wrasse spots. Eel and groper holes are left to you: they need a real hole.",
-	"spawns": "Octopus and diver spawn points, for a team that has none.",
-}
+## The group of each kind of marker it adds. The groups themselves are in populate_groups.gd.
 const GROUP_OF_KIND := {
 	"food_patch": "food",
 	"fish_flounder": "creatures", "fish_lionfish": "creatures", "stingray": "creatures", "wrasse": "creatures",
@@ -113,8 +105,8 @@ const HAUNTS_A_KIND := Vector2i(2, 6)
 
 
 ## Dresses `map` from `seed_number`, as one step of `history`, a plain UndoRedo or the editor's, on
-## `surfaces`: "both", "seabed" or "meshes", as Recipes.SURFACES, with the `groups` ticked, as GROUPS names
-## them. Gives back {"pieces", "markers", "words"}: what it added, and that in plain words.
+## `surfaces`: "both", "seabed" or "meshes", as Recipes.SURFACES, with the `groups` ticked, as
+## PopulateGroups.GROUPS names them. Gives back {"pieces", "markers", "words"}: what it added, and that in plain words.
 static func dress(map: SmartFellasMap, seed_number: int, history: Object, surfaces := "both", groups: Dictionary[String, bool] = FIRST_GROUPS) -> Dictionary:
 	return _redo(map, seed_number, history, true, "Populate the map", surfaces, groups)
 
@@ -126,7 +118,7 @@ static func clear(map: SmartFellasMap, history: Object, groups: Dictionary[Strin
 
 static func _redo(map: SmartFellasMap, seed_number: int, history: Object, adding: bool, words: String, surfaces: String, groups: Dictionary[String, bool]) -> Dictionary:
 	var ticked: Array[String] = []
-	for group: String in GROUPS:
+	for group: String in PopulateGroups.GROUPS:
 		if groups.get(group, false):
 			ticked.append(group)
 	if ticked.is_empty():
@@ -200,7 +192,7 @@ static func _redo(map: SmartFellasMap, seed_number: int, history: Object, adding
 			pieces += own[kit].size() / Kit.STRIDE
 	var names: Array[String] = []
 	for group in ticked:
-		names.append(GROUP_WORDS[group])
+		names.append(PopulateGroups.GROUP_WORDS[group])
 	var said := "Took away what Populate added in %s." % _listed(names)
 	if adding:
 		var parts: Array[String] = []
