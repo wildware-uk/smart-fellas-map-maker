@@ -2,6 +2,10 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.08-d6e193a
+
+- Small fixes and tidying.
+
 ## 2026.11.08-ac0615a
 
 - Fixed maps drawing as a plain white level after an update: the add-on now adds the water settings an older project is missing.
