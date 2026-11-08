@@ -6,6 +6,7 @@ extends RefCounted
 const Brush := preload("brush.gd")
 const Cost := preload("cost.gd")
 const Kit := preload("kit.gd")
+const MapExporter := preload("map_exporter.gd")
 const SurfaceFinder := preload("surface_finder.gd")
 
 const RAY_LENGTH := 2000.0
@@ -225,10 +226,10 @@ func _tell_about_the_count() -> void:
 	var pieces: int = Cost.of(_map)["pieces"]
 	if pieces >= Cost.PIECES_CLOSE and not _warned_close:
 		_warned_close = true
-		said.emit("Getting close: this map has %d of the %d pieces a map can place." % [pieces, Cost.PIECES_OVER])
+		said.emit("This map has %d pieces now: past about %d, a map starts to cost frame rate. Nothing stops you." % [pieces, Cost.PIECES_CLOSE])
 	elif pieces < Cost.PIECES_CLOSE:
 		_warned_close = false
-	if pieces < Cost.PIECES_OVER:
+	if pieces < MapExporter.MOST_PIECES:
 		_told_full = false
 
 
@@ -263,7 +264,7 @@ func draw(overlay: Control, camera: Camera3D) -> void:
 	if _hover.is_empty():
 		return
 	var colour := ERASE_COLOUR if _erase_held else PAINT_COLOUR
-	if not _erase_held and Cost.of(_map)["pieces"] >= Cost.PIECES_OVER:
+	if not _erase_held and Cost.of(_map)["pieces"] >= MapExporter.MOST_PIECES:
 		colour = FULL_COLOUR
 	var at: Vector3 = _hover["at"]
 	var normal: Vector3 = _hover["normal"]

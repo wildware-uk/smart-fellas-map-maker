@@ -33,7 +33,7 @@ const CLUMP_SECOND_KIND := 0.2
 const SPACING_CELL := 1.5
 
 ## What to say when the map can't take another piece.
-const FULL_WORDS := "This map has all the %d pieces a map can place. Erase some to paint more."
+const FULL_WORDS := "This map has %d kit pieces, as many as the game can hold in memory for one map. The brush stops here."
 
 ## How many pieces this stroke placed or removed.
 var placed := 0

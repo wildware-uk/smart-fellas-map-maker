@@ -10,7 +10,7 @@ const RED := Color(1.0, 0.3, 0.25)
 const GREEN := Color(0.35, 0.82, 0.55)
 const WORDS_FINE := "This map is fine for mid-level computers."
 const WORDS_CLOSE := "Getting heavy. A little more is fine."
-const WORDS_OVER := "Too much: this will run slowly in the game. Erase some."
+const WORDS_OVER := "Heavy: this will run slowly on mid-level computers. It still exports and plays."
 
 var _rows := {}
 var _verdict: Label
@@ -19,8 +19,8 @@ var _verdict: Label
 func _ready() -> void:
 	name = "Cost meter"
 	custom_minimum_size = Vector2(0.0, 26.0)
-	_add_row("pieces", "Pieces", "How many pieces the map places. A map from outside the game can place at most %d, and the game refuses any more. The brush stops there." % Cost.PIECES_OVER)
-	_add_row("triangles", "Triangles", "What all the pieces come to in triangles. This is what costs the most to draw: a coral bush is thousands, and a pebble is 80. The limits were measured in the real game at 1080p Medium.")
+	_add_row("pieces", "Pieces", "How many pieces the map places. Many cost frame time: the colour is advice, and nothing stops you.")
+	_add_row("triangles", "Triangles", "What all the pieces come to in triangles. This is what costs the most to draw: a coral bush is thousands, and a pebble is 80. The colours were measured in the real game at 1080p Medium, and are only advice.")
 	_add_row("draws", "Draws", "How many different kinds of piece the map uses, and one for the sand. Each kind is drawn in one go, so many of one kind cost far less here than a few of many kinds.")
 	_verdict = Label.new()
 	_verdict.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -73,7 +73,7 @@ func show_cost(map: SmartFellasMap) -> void:
 			_verdict.text = WORDS_CLOSE
 			_verdict.add_theme_color_override("font_color", AMBER)
 		Cost.Level.OVER:
-			_verdict.text = "This map is full. Erase some to paint more." if cost["pieces"] >= Cost.PIECES_OVER and cost["triangles"] < Cost.TRIANGLES_OVER else WORDS_OVER
+			_verdict.text = WORDS_OVER
 			_verdict.add_theme_color_override("font_color", RED)
 
 

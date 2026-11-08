@@ -2,6 +2,13 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.08-13da866
+
+- Maps are never refused for being big or detailed any more. A model can have millions of triangles and reach kilometres; only a broken or hostile file is stopped.
+- The cost meter is advice: a red map still exports and plays, and the brush only stops at 50,000 kit pieces.
+- A map's player numbers are what it's made for, not a limit: a lobby can go over them.
+- Needs the game version from today or later.
+
 ## 2026.11.08-519fbc2
 
 - A Water switch above the 3D view (and Alt+W, and a tick box on the Water tab) turns the underwater look off and on, to line things up in plain light. It only changes the editor's view; the game always draws the water.

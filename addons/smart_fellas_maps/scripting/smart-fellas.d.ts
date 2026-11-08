@@ -389,7 +389,8 @@ interface Game {
   /**
    * Asks for `count` bots on a team, 0 to 32. The lobby keeps that many, and a round being played
    * gets or loses them at once. People always keep their places: no more bots join than the
-   * team's cap in the lobby, the map and the mode's maxPlayers have room for (for game modes).
+   * team's cap in the lobby, the game's 32 players and the mode's maxPlayers have room for (for
+   * game modes).
    */
   setBots(team: Team, count: number): void;
   /**

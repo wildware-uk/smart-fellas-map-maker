@@ -7,8 +7,9 @@ const PLUGIN_CFG := "res://addons/smart_fellas_maps/plugin.cfg"
 const RELEASES_URL := "https://github.com/wildware-uk/smart-fellas-map-maker/releases"
 const UNKNOWN := "unknown"
 ## The map maker version the game must say, at least, for this add-on: what it can take from the add-on.
-## The game's MAP_MAKER_VERSION in src/map/check.rs; raise the two together.
-const GAME_NEEDS := 4
+## The game's MAP_MAKER_VERSION in src/map/check.rs; raise the two together. 5: the game takes maps of
+## any size and detail, with only guards against broken files (#299).
+const GAME_NEEDS := 5
 
 
 static func number() -> String:

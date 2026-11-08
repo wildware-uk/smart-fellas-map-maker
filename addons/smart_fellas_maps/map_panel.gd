@@ -39,8 +39,8 @@ const NUMBERS := [
 ]
 const PLAYER_NUMBERS := [
 	["fewest_players", "Fewest players", Vector2(2.0, 32.0), 1.0],
-	["most_divers", "Most divers (0: by spawn points)", Vector2(0.0, 32.0), 1.0],
-	["most_octopuses", "Most octopuses (0: by spawn points)", Vector2(0.0, 32.0), 1.0],
+	["most_divers", "Divers it's made for (0: by spawn points)", Vector2(0.0, 32.0), 1.0],
+	["most_octopuses", "Octopuses it's made for (0: by spawn points)", Vector2(0.0, 32.0), 1.0],
 ]
 const SWITCHES := [
 	["hunters", "Shark and eels hunt"],
@@ -136,6 +136,7 @@ func _ready() -> void:
 	_add_heading(column, "Game pieces")
 	_add_place_buttons(column, PIECE_KINDS)
 	_add_heading(column, "Players")
+	_label(column, "How many the map is made for. They aren't limits: a lobby can go over them, and the game warns it may feel crowded.")
 	_add_numbers(column, PLAYER_NUMBERS)
 	_add_heading(column, "Sea life")
 	for row in SWITCHES:

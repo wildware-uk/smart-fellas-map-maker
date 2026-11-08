@@ -8,9 +8,10 @@ const MapExporter := preload("map_exporter.gd")
 
 enum Level { FINE, CLOSE, OVER }
 
-## Pieces: the game refuses a stranger's map past MOST_PIECES. The brush warns at CLOSE and stops at OVER.
-const PIECES_CLOSE := 3400
-const PIECES_OVER := MapExporter.MOST_PIECES
+## Pieces: what they cost in frame time, only advice (#299). The Reef places 10,170 and holds 60 a second;
+## the owner's Boneyard places 13,323. The brush stops only at MapExporter.MOST_PIECES, far past these.
+const PIECES_CLOSE := 12000
+const PIECES_OVER := 20000
 ## Triangles, each counted once. Measured in the real game: see "The cost meter" in the README.
 const TRIANGLES_CLOSE := 12000000
 const TRIANGLES_OVER := 32000000

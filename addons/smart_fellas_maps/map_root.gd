@@ -92,9 +92,10 @@ var area_depth: float:
 		pieces_changed.emit()
 
 @export_group("Players")
-## The fewest players the map is good for, counting everyone in the lobby.
+## The fewest players the map is made for, counting everyone in the lobby.
 @export_range(2, 32) var fewest_players := 2
-## The most on each team, each with a spawn point of their own. 0 means one for each spawn point.
+## How many on each team the map is made for, each with a spawn point of their own. 0 means one for
+## each spawn point. Only advice: a lobby can go over it, and the game warns that it may feel crowded.
 @export_range(0, 32) var most_divers := 0
 @export_range(0, 32) var most_octopuses := 0
 
