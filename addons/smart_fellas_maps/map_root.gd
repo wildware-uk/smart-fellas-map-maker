@@ -418,6 +418,12 @@ func hold_water_time_at(seconds: float) -> void:
 		_water.hold_time_at(seconds)
 
 
+## Whether `node` is part of what draws the water, which comes and goes as the water is switched off and on,
+## and never changes the map.
+func draws_the_water(node: Node) -> bool:
+	return _water != null and (node == _water or _water.is_ancestor_of(node))
+
+
 ## Draws this map's water. The numbers its shaders read are shared by every map open in the editor, so
 ## the editor calls this on coming to a map's tab.
 func show_water() -> void:

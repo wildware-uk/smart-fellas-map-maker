@@ -2,6 +2,10 @@
 
 What changed in each version of the Smart Fellas map maker. A version is the date it was made, then a short code for the exact build, like `2026.11.06-1a2b3c4`. The **Map** panel in Godot shows yours.
 
+## 2026.11.08-519fbc2
+
+- A Water switch above the 3D view (and Alt+W, and a tick box on the Water tab) turns the underwater look off and on, to line things up in plain light. It only changes the editor's view; the game always draws the water.
+
 ## 2026.11.08-030df7b
 
 - Small fixes and tidying.

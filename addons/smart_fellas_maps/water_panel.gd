@@ -3,6 +3,9 @@ extends VBoxContainer
 ## The Water panel: the map's depth with its quick choices, and any one value set by hand. Every change
 ## shows at once, goes through Godot's undo, and is saved with the scene for Export to write to map.ron.
 
+## Show the water was ticked or cleared. It's for the editor alone, so it never goes in the map or its undo.
+signal water_toggled(on: bool)
+
 const WaterLook := preload("water/water_look.gd")
 
 const QUICK_CHOICES := [
@@ -24,6 +27,8 @@ const MINIMUM_WIDTH := 200.0
 
 var undo: EditorUndoRedoManager
 
+var _water_shown: CheckBox
+var _water_is_shown := true
 var _depth_slider: HSlider
 var _depth_number: SpinBox
 var _haze_on: CheckBox
@@ -35,6 +40,13 @@ var _showing := false
 
 func _ready() -> void:
 	name = "Water"
+	_water_shown = CheckBox.new()
+	_water_shown.text = "Show the water (Alt+W)"
+	_water_shown.tooltip_text = "Untick to see the map in Godot's own light, with no haze, tint, surface, shafts or caustics, to line things up. It only changes this view: the game always draws the water."
+	_water_shown.button_pressed = _water_is_shown
+	_water_shown.toggled.connect(func(on: bool) -> void: water_toggled.emit(on))
+	add_child(_water_shown)
+	add_child(HSeparator.new())
 	_add_quick_choices()
 	_add_depth()
 	_summary = Label.new()
@@ -123,6 +135,13 @@ func _add_row(key: String, words: String, step: float) -> void:
 
 func _map() -> SmartFellasMap:
 	return EditorInterface.get_edited_scene_root() as SmartFellasMap
+
+
+## Ticks or clears Show the water without asking for it again.
+func show_water_shown(on: bool) -> void:
+	_water_is_shown = on
+	if _water_shown != null:
+		_water_shown.set_pressed_no_signal(on)
 
 
 ## Makes the panel say what the open map says.

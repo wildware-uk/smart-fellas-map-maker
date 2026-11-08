@@ -1,6 +1,6 @@
 @tool
 extends EditorPlugin
-## Puts the add-on's tools in the editor: the Export Map and Test Map buttons above the 3D view, the Pieces panel in
+## Puts the add-on's tools in the editor: the Export Map, Test Map and Water buttons above the 3D view, the Pieces panel in
 ## the dock on the left, the Map, Paint and Water panels in a dock of their own on the right, the cost meter
 ## below the 3D view, and Project > Tools > Smart Fellas: Check for updates.
 
@@ -21,6 +21,7 @@ const PieceDrop := preload("piece_drop.gd")
 const PiecesPanel := preload("pieces_panel.gd")
 const UpdateBanner := preload("update_banner.gd")
 const WaterPanel := preload("water_panel.gd")
+const WaterView := preload("water/water_view.gd")
 ## Export Map, Test Map and what they found, loaded on the first press. Godot compiles every script the
 ## add-on preloads before the editor can open a map, so these would slow every opening (#291).
 const MAP_TESTER := "res://addons/smart_fellas_maps/map_tester.gd"
@@ -38,6 +39,10 @@ const CHECK_FOR_UPDATES := "Smart Fellas: Check for updates"
 ## Where the Map panel's Show play area is kept, in the project's editor settings rather than the map, as
 ## the game has no use for it.
 const SHOW_PLAY_AREA := ["smart_fellas_maps", "show_play_area"]
+## Where the water view's switch is kept, the same way.
+const SHOW_WATER := ["smart_fellas_maps", "show_water"]
+## What the corner of the 3D view says while the water is off, so a plain view never looks broken.
+const WATER_OFF_NOTE := "Water view off (Alt+W)"
 
 ## How many 3D views Godot can split into.
 const VIEWS := 4
@@ -47,6 +52,7 @@ const GAME_STARTS_WITHIN := 4.0
 var _button: Button
 var _folder_button: Button
 var _test_button: Button
+var _water_button: Button
 var _game_process := -1
 ## Whether the add-on has been turned off. A check under way comes back to nothing.
 var _closed := false
@@ -96,8 +102,12 @@ func _enter_tree() -> void:
 	_test_button.tooltip_text = "Export this map, check it with the game's own checker, and open the game hosted on it with bots."
 	_test_button.pressed.connect(_test)
 	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, _test_button)
+	_water_button = _water_switch()
+	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, _water_button)
 	_water_panel = WaterPanel.new()
 	_water_panel.undo = get_undo_redo()
+	_water_panel.water_toggled.connect(_set_water_shown)
+	_set_water_shown(EditorInterface.get_editor_settings().get_project_metadata(SHOW_WATER[0], SHOW_WATER[1], true))
 
 	_tool = BrushTool.new()
 	_tool.history = get_undo_redo()
@@ -188,6 +198,10 @@ func _exit_tree() -> void:
 	get_tree().node_removed.disconnect(_on_tree_changed)
 	_tool.end_stroke()
 	_sculptor.end_stroke()
+	# With the add-on off there's no switch left to bring the water back, so it comes back now.
+	WaterView.water_shown = true
+	if _map != null and is_instance_valid(_map):
+		_map.show_water()
 	_watch_map(null)
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, _button)
 	_button.queue_free()
@@ -195,6 +209,8 @@ func _exit_tree() -> void:
 	_folder_button.queue_free()
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, _test_button)
 	_test_button.queue_free()
+	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, _water_button)
+	_water_button.queue_free()
 	remove_dock(_water_dock)
 	_water_dock.queue_free()
 	remove_dock(_paint_dock)
@@ -304,6 +320,50 @@ func _forward_3d_force_draw_over_viewport(overlay: Control) -> void:
 	_tool.draw(overlay, _camera)
 	_markers.draw(overlay, _camera)
 	_sculptor.draw(overlay, _camera)
+	if not WaterView.water_shown and _map != null:
+		_draw_water_off_note(overlay)
+
+
+## The Water switch above the 3D view, with an eye that's open while the water shows.
+func _water_switch() -> Button:
+	var button := Button.new()
+	button.text = "Water"
+	button.toggle_mode = true
+	button.flat = true
+	button.tooltip_text = "Show the game's water in this view, or switch it off to see the map in Godot's own light and line things up. Only this view changes: the map and the game always have their water."
+	var key := InputEventKey.new()
+	key.keycode = KEY_W
+	key.alt_pressed = true
+	button.shortcut = Shortcut.new()
+	button.shortcut.events = [key]
+	button.toggled.connect(_set_water_shown)
+	return button
+
+
+## Shows or hides the water in every open map, and keeps the choice for the next time the project opens.
+## Nothing is made again, so it's instant on a map of any size.
+func _set_water_shown(on: bool) -> void:
+	WaterView.water_shown = on
+	EditorInterface.get_editor_settings().set_project_metadata(SHOW_WATER[0], SHOW_WATER[1], on)
+	_water_button.set_pressed_no_signal(on)
+	var theme := EditorInterface.get_editor_theme()
+	_water_button.icon = theme.get_icon("GuiVisibilityVisible" if on else "GuiVisibilityHidden", "EditorIcons")
+	_water_panel.show_water_shown(on)
+	if _map != null and is_instance_valid(_map):
+		_map.show_water()
+	update_overlays()
+
+
+## Top left, under the view's own menu, where nothing of Godot's covers it whatever the layout.
+func _draw_water_off_note(overlay: Control) -> void:
+	var font := overlay.get_theme_default_font()
+	var font_size := overlay.get_theme_default_font_size()
+	var words := font.get_string_size(WATER_OFF_NOTE, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	const AT := Vector2(10.0, 48.0)
+	const PADDING := Vector2(8.0, 4.0)
+	var box := Rect2(AT * EditorInterface.get_editor_scale(), words + PADDING * 2.0)
+	overlay.draw_rect(box, Color(0.0, 0.0, 0.0, 0.6))
+	overlay.draw_string(font, box.position + Vector2(PADDING.x, PADDING.y + font.get_ascent(font_size)), WATER_OFF_NOTE, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1.0, 0.85, 0.4))
 
 
 func _on_painting_toggled(on: bool) -> void:
@@ -462,6 +522,9 @@ func _on_history_changed() -> void:
 ## Godot adds and takes away nodes of its own all the time, for tooltips and menus. Only the map's count.
 func _on_tree_changed(node: Node) -> void:
 	if _map == null or not is_instance_valid(_map) or not (node == _map or _map.is_ancestor_of(node)):
+		return
+	# The water's sun and world leave and come back as it's switched, which changes nothing on the map.
+	if _map.draws_the_water(node):
 		return
 	_map_changed()
 	_redraw_play_area()

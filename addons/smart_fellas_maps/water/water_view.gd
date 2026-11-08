@@ -50,18 +50,26 @@ enum Seen { SOLID, CUT_OUT, DITHERED }
 
 ## The pictures the game makes for itself, loaded once however many maps are open.
 static var _pictures := {}
+## Whether the editor draws the water, or the map in Godot's own light to line things up in. Shared by every
+## open map, as the shaders' numbers are. The plugin keeps it in the project's editor settings.
+static var water_shown := true
 
 var _sand_look: StandardMaterial3D
 ## Each painted rock picture's look, by the picture.
 var _rock_looks := {}
 var _surface: MeshInstance3D
 var _sun: DirectionalLight3D
+var _world: WorldEnvironment
+var _screen: MeshInstance3D
+var _speck_cloud: MultiMeshInstance3D
 var _environment: Environment
 var _speck_material: ShaderMaterial
 var _dressed := {}
 var _seconds := 0.0
 ## The sea base and the ground last given to the shaders, which a test with no screen can't read back.
 var sea_shown := Vector2.ZERO
+## Whether the last show_water drew the water, which a test with no screen can't read back either.
+var water_drawn := true
 var _time_held := false
 ## The game's lighting, by how a piece lets what's behind it show and then whether it shows both its sides.
 var _reef_lit := {
@@ -94,6 +102,11 @@ func _exit_tree() -> void:
 ## pictures, megabytes of them, for any mesh that is the scene's own, such as the Seabed.
 func _notification(what: int) -> void:
 	match what:
+		NOTIFICATION_PREDELETE:
+			# With the water off, its sun and world are out of the tree, so nothing else frees them.
+			for part: Node in [_sun, _world]:
+				if is_instance_valid(part) and part.get_parent() == null:
+					part.free()
 		NOTIFICATION_EDITOR_PRE_SAVE:
 			_undress_all_under(get_parent())
 		NOTIFICATION_EDITOR_POST_SAVE:
@@ -126,13 +139,18 @@ func hold_time_at(seconds: float) -> void:
 ## Shows the water of a map `depth` metres down, with any of `overrides` as water_look.gd takes them: the
 ## surface and shade over `sea_base`, as the map's sea_base() gives it, and the shafts aimed at `ground`,
 ## as its area_base().
+## With water_shown off, it draws the map in Godot's own light instead.
 func show_water(depth: float, overrides: Dictionary, sea_base: float, ground: float) -> void:
-	var look := WaterLook.look_of(depth, overrides)
-	_set_globals(look)
 	RenderingServer.global_shader_parameter_set_override("sf_sea_base", sea_base)
 	RenderingServer.global_shader_parameter_set_override("sf_sea_ground", ground)
 	sea_shown = Vector2(sea_base, ground)
 	_surface.position.y = sea_base + SURFACE_HEIGHT
+	_show_parts(water_shown)
+	if not water_shown:
+		_set_plain_globals()
+		return
+	var look := WaterLook.look_of(depth, overrides)
+	_set_globals(look)
 	_environment.background_color = _as_colour(look["haze"])
 	_environment.ambient_light_color = Color(_as_colour(look["fill"])).linear_to_srgb()
 	_environment.ambient_light_energy = look["fill_brightness"] * EXPOSURE * FILL_ON_A_ROUGH_SURFACE
@@ -143,6 +161,33 @@ func show_water(depth: float, overrides: Dictionary, sea_base: float, ground: fl
 	_sun.light_energy = lux * EXPOSURE / PI
 	_surface.visible = look["surface"] > 0.0
 	_speck_material.set_shader_parameter("speck_colour", _as_colour(look["speck"]).srgb_to_linear())
+
+
+## Shows or hides what the water adds to the view. Its sun and world leave the tree when hidden, as Godot
+## gives the view its own sun and sky only while the scene has none in it. Nothing is made again, and every
+## piece keeps the material it was dressed in.
+func _show_parts(on: bool) -> void:
+	water_drawn = on
+	for part: Node in [_world, _sun]:
+		if on and part.get_parent() == null:
+			add_child(part)
+		elif not on and part.get_parent() == self:
+			remove_child(part)
+	_screen.visible = on
+	_speck_cloud.visible = on
+	if not on:
+		_surface.visible = false
+
+
+## The game's lighting on the pieces, with all the water's own taken out of it: no haze, caustics, shafts or
+## light in the shadows of its own. What's left is lit by Godot's sun and sky like any plain material.
+func _set_plain_globals() -> void:
+	var set_global := RenderingServer.global_shader_parameter_set_override
+	set_global.call("sf_haze_density", 0.0)
+	set_global.call("sf_sun_direct", Vector3.ZERO)
+	set_global.call("sf_fill", Vector3.ZERO)
+	set_global.call("sf_caustics", 0.0)
+	set_global.call("sf_shaft_light", 0.0)
 
 
 static func _as_colour(value: Vector3) -> Color:
@@ -178,9 +223,9 @@ func _build() -> void:
 	_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	_environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	var world := WorldEnvironment.new()
-	world.environment = _environment
-	add_child(world)
+	_world = WorldEnvironment.new()
+	_world.environment = _environment
+	add_child(_world)
 
 	_sun = DirectionalLight3D.new()
 	_sun.basis = Basis.looking_at(-SUN_FROM.normalized(), Vector3.UP)
@@ -194,8 +239,10 @@ func _build() -> void:
 
 	_surface = _surface_plane()
 	add_child(_surface)
-	add_child(_screen_quad())
-	add_child(_specks())
+	_screen = _screen_quad()
+	add_child(_screen)
+	_speck_cloud = _specks()
+	add_child(_speck_cloud)
 
 
 func _surface_plane() -> MeshInstance3D:
