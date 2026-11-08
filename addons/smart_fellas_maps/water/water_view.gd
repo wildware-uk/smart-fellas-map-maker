@@ -25,6 +25,7 @@ const SHADOW_FIRST_BOUND := 12.0
 const SHAFT_CANDELA := 1.0e8 / (4.0 * PI)
 ## How long the water takes to repeat exactly, in seconds: the game's WATER_PERIOD.
 const WATER_PERIOD := 600.0
+## How high the surface sits over the map's sea base: the game's SURFACE_HEIGHT.
 const SURFACE_HEIGHT := 28.0
 const SURFACE_SPAN := 360.0
 ## On Medium: the game's particle count, and the seed and box its specks are placed with.
@@ -57,6 +58,8 @@ var _environment: Environment
 var _speck_material: ShaderMaterial
 var _dressed := {}
 var _seconds := 0.0
+## The sea base and the ground last given to the shaders, which a test with no screen can't read back.
+var sea_shown := Vector2.ZERO
 var _time_held := false
 ## The game's lighting, by how a piece lets what's behind it show and then whether it shows both its sides.
 var _reef_lit := {
@@ -109,10 +112,16 @@ func hold_time_at(seconds: float) -> void:
 	RenderingServer.global_shader_parameter_set_override("sf_time", _seconds)
 
 
-## Shows the water of a map `depth` metres down, with any of `overrides` as water_look.gd takes them.
-func show_water(depth: float, overrides: Dictionary) -> void:
+## Shows the water of a map `depth` metres down, with any of `overrides` as water_look.gd takes them: the
+## surface and shade over `sea_base`, as the map's sea_base() gives it, and the shafts aimed at `ground`,
+## as its area_base().
+func show_water(depth: float, overrides: Dictionary, sea_base: float, ground: float) -> void:
 	var look := WaterLook.look_of(depth, overrides)
 	_set_globals(look)
+	RenderingServer.global_shader_parameter_set_override("sf_sea_base", sea_base)
+	RenderingServer.global_shader_parameter_set_override("sf_sea_ground", ground)
+	sea_shown = Vector2(sea_base, ground)
+	_surface.position.y = sea_base + SURFACE_HEIGHT
 	_environment.background_color = _as_colour(look["haze"])
 	_environment.ambient_light_color = Color(_as_colour(look["fill"])).linear_to_srgb()
 	_environment.ambient_light_energy = look["fill_brightness"] * EXPOSURE * FILL_ON_A_ROUGH_SURFACE

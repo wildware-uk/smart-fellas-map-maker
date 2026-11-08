@@ -72,3 +72,11 @@ sf_surface={
 "type": "vec3",
 "value": Vector3(1, 1, 1)
 }
+sf_sea_base={
+"type": "float",
+"value": 0.0
+}
+sf_sea_ground={
+"type": "float",
+"value": 0.0
+}

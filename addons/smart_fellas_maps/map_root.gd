@@ -24,6 +24,9 @@ signal area_changed
 
 ## How far under the valley floor an older map's square reaches, in metres: the game's `BELOW_THE_FLOOR`.
 const BELOW_THE_FLOOR := 12.0
+## How high over its ground a box's ceiling may reach before the sea overhead lifts to stay clear of it, in
+## metres: the game's `CEILING_UNDER_THE_SEA`.
+const CEILING_UNDER_THE_SEA := 20.0
 
 ## What players call the map.
 @export var map_name := "New Map"
@@ -227,6 +230,8 @@ func show_seabed() -> void:
 	_sculpted_sand.visible = grid != null and has_seabed
 	_sculpted_rock.visible = grid != null and has_seabed
 	_sculpted_moss.visible = grid != null and has_seabed
+	# The sea overhead stands over the ground under the box's middle.
+	show_water()
 	_ground_grid = grid
 	_ground_shape = {}
 	if grid == null:
@@ -297,6 +302,7 @@ static func _fill_ground(ground: MeshInstance3D, shape: Dictionary, triangles: P
 func _show_area() -> void:
 	area_changed.emit()
 	update_gizmos()
+	show_water()
 
 
 ## The play area box, or null on a map from before it was one.
@@ -333,6 +339,15 @@ func area_base() -> float:
 	var seabed := find_child("Seabed", true, true) as Node3D
 	var ground: float = grid.height_at(middle.x, middle.z) if grid != null else (seabed.global_position.y if seabed != null else box.position.y)
 	return clampf(ground, box.position.y, box.end.y)
+
+
+## The height the sea surface and its shafts are measured up from, as the game's `surface::sea_base`: on an
+## older square, the valley floor at 0; on a box, its base, raised where its ceiling reaches more than
+## CEILING_UNDER_THE_SEA over that.
+func sea_base() -> float:
+	if play_area() == null:
+		return 0.0
+	return maxf(area_base(), area_ceiling() - CEILING_UNDER_THE_SEA)
 
 
 ## How far the play area's farthest edge is from the middle of the map, on the flat.
@@ -402,4 +417,4 @@ func hold_water_time_at(seconds: float) -> void:
 ## the editor calls this on coming to a map's tab.
 func show_water() -> void:
 	if _water != null:
-		_water.show_water(water_depth, water_overrides)
+		_water.show_water(water_depth, water_overrides, sea_base(), area_base())

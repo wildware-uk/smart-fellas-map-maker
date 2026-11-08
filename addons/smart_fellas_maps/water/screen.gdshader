@@ -31,8 +31,9 @@ const int STEPS = 24;
 // The light the water scatters toward the eye along `way`, up to `reach` metres, and how much of what
 // lies behind still shows, in the alpha. `ahead` is where the camera faces.
 vec4 shafts(vec3 eye, vec3 way, vec3 ahead, float reach) {
-	vec3 low = vec3(eye.x, WATER_MIDDLE, eye.z) - WATER_HALF;
-	vec3 high = vec3(eye.x, WATER_MIDDLE, eye.z) + WATER_HALF;
+	// The lit water, stretched down to the ground on a box taller than the Reef, as the game's.
+	vec3 low = vec3(eye.x, sf_sea_ground + WATER_MIDDLE, eye.z) - WATER_HALF;
+	vec3 high = vec3(eye.x, sf_sea_base + WATER_MIDDLE, eye.z) + WATER_HALF;
 	vec3 inverse_way = 1.0 / way;
 	vec3 one = (low - eye) * inverse_way;
 	vec3 other = (high - eye) * inverse_way;

@@ -23,6 +23,11 @@ global uniform float sf_shaft_light;
 global uniform vec3 sf_shaft_colour;
 // The surface overhead's share of its full brightness, per colour.
 global uniform vec3 sf_surface;
+// The height the surface and the shade are measured up from: the map's sea base, as the game's
+// surface::sea_base. Then the ground the shaft light aims at and the lit water reaches down to: the play
+// area's base, under the sea base only on a box taller than the Reef.
+global uniform float sf_sea_base;
+global uniform float sf_sea_ground;
 
 const float SF_PI = 3.14159265358979;
 // The share of the sun's glow the haze picks up, and how tightly it gathers round the sun: the game's
@@ -54,7 +59,7 @@ const float SF_SHAFT_HEIGHT = 150.0;
 const float SF_SHAFT_RANGE = 375.0;
 const float SF_SHAFT_COS_INNER = 0.97590;
 const float SF_SHAFT_COS_OUTER = 0.95534;
-// The shade it shines through: its height, one repeat's width, its drift, and how far from a repeat's edge
+// The shade it shines through: its height over the sea base, one repeat's width, its drift, and how far from a repeat's edge
 // the plane's middle sits.
 const float SF_SHADE_HEIGHT = 26.5;
 const float SF_SHADE_TILE = 24.0;
@@ -65,14 +70,14 @@ const float SF_PLANE_HALF = 180.0;
 // The share of the shaft light that reaches `at`, for an eye at `eye`: how far it has come, how far inside
 // its cone that is, and whether it got past the shade.
 float sf_shaft_light_reaching(vec3 at, vec3 eye, sampler2D bands) {
-	vec3 from = vec3(eye.x, 0.0, eye.z) + sf_sun_to * SF_SHAFT_HEIGHT;
+	vec3 from = vec3(eye.x, sf_sea_ground, eye.z) + sf_sun_to * SF_SHAFT_HEIGHT;
 	vec3 to_light = from - at;
 	float apart = dot(to_light, to_light);
 	float range = apart / (SF_SHAFT_RANGE * SF_SHAFT_RANGE);
 	range = clamp(1.0 - range * range, 0.0, 1.0);
 	float in_cone = clamp((dot(sf_sun_to, normalize(to_light)) - SF_SHAFT_COS_OUTER) / (SF_SHAFT_COS_INNER - SF_SHAFT_COS_OUTER), 0.0, 1.0);
 	float past = 1.0;
-	float share = (SF_SHADE_HEIGHT - at.y) / (from.y - at.y);
+	float share = (sf_sea_base + SF_SHADE_HEIGHT - at.y) / (from.y - at.y);
 	if (share >= 0.0) {
 		vec3 hit = at + to_light * share;
 		vec2 moved = hit.xz - SF_SHADE_DRIFT * sf_time;
