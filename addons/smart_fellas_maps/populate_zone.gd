@@ -7,15 +7,19 @@ extends Node3D
 ## zones: Export and the game never see them.
 
 enum Kind { CORAL, SAND, KELP, BARE, CLEAR }
+## How a zone's disc is drawn besides its colour: plain, striped across like tape round a no-go patch, or
+## nearly empty inside a thick dashed rim. Kinds that look alike in colour over the water are told apart by it.
+enum Look { PLAIN, STRIPED, DASHED }
 
-## For each kind: what the Map panel calls it, a line on what it does, the colour it's drawn in, how many
-## times thicker each of Populate's layers grows in it, by recipe, and which layers grow none there. A
-## kind keeps markers out if "markers" is false.
+## For each kind: what the Map panel calls it, a line on what it does, the colour it's drawn in and its look,
+## how many times thicker each of Populate's layers grows in it, by recipe, and which layers grow none
+## there. A kind keeps markers out if "markers" is false.
 const KINDS := {
 	Kind.CORAL: {
 		"words": "Coral garden",
 		"tip": "Coral, anemones and rocks grow thick here.",
 		"colour": Color(1.0, 0.45, 0.85),
+		"look": Look.PLAIN,
 		"more": {"Coral on rock": 3.0, "Coral on walls": 3.0, "Anemone patch": 3.0, "Rock rubble": 2.0},
 		"none": ["Kelp bed"],
 		"markers": true,
@@ -24,6 +28,7 @@ const KINDS := {
 		"words": "Open sand",
 		"tip": "Only sand plants and shells, with no rocks, coral or kelp: open ground to cross and bury in.",
 		"colour": Color(1.0, 0.85, 0.3),
+		"look": Look.PLAIN,
 		"more": {"Sand garden": 2.0},
 		"none": ["Rock rubble", "Coral on rock", "Coral on walls", "Kelp bed", "Anemone patch"],
 		"markers": true,
@@ -32,6 +37,7 @@ const KINDS := {
 		"words": "Kelp forest",
 		"tip": "Kelp grows thick here.",
 		"colour": Color(0.35, 0.85, 0.35),
+		"look": Look.PLAIN,
 		"more": {"Kelp bed": 4.0},
 		"none": [],
 		"markers": true,
@@ -39,7 +45,8 @@ const KINDS := {
 	Kind.BARE: {
 		"words": "Bare",
 		"tip": "Nothing grows here. Food, fish and spawn points may still go here.",
-		"colour": Color(0.6, 0.6, 0.65),
+		"colour": Color(0.95, 0.95, 0.95),
+		"look": Look.DASHED,
 		"more": {},
 		"none": ["*"],
 		"markers": true,
@@ -47,7 +54,8 @@ const KINDS := {
 	Kind.CLEAR: {
 		"words": "Keep clear",
 		"tip": "Nothing at all goes here: no scenery, food, fish or spawn points.",
-		"colour": Color(0.95, 0.2, 0.25),
+		"colour": Color(1.0, 0.12, 0.12),
+		"look": Look.STRIPED,
 		"more": {},
 		"none": ["*"],
 		"markers": false,
