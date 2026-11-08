@@ -64,6 +64,7 @@ var _screen: MeshInstance3D
 var _speck_cloud: MultiMeshInstance3D
 var _environment: Environment
 var _speck_material: ShaderMaterial
+## The game's lighting made for each material a piece came with and how it sways, by both.
 var _dressed := {}
 var _seconds := 0.0
 ## The sea base and the ground last given to the shaders, which a test with no screen can't read back.
@@ -369,19 +370,11 @@ func _dress_mesh(piece: MeshInstance3D) -> void:
 	if piece.mesh == null:
 		return
 	var is_seabed := piece.name == SEABED
+	var sway := _sway_of(piece.mesh)
 	for surface in piece.mesh.get_surface_count():
 		var from := piece.mesh.surface_get_material(surface)
 		if _is_dressed(from) and piece.get_surface_override_material(surface) == null:
-			piece.set_surface_override_material(surface, _material_for(from, is_seabed))
-	var name_of_mesh := _name_in_the_game(piece.mesh.resource_name)
-	var flex := _flex_of(name_of_mesh)
-	if flex <= 0.0 or piece.get_instance_shader_parameter("flex") != null:
-		return
-	piece.set_instance_shader_parameter("flex", flex)
-	if name_of_mesh.begins_with("prop_"):
-		var bounds := piece.mesh.get_aabb()
-		piece.set_instance_shader_parameter("stiff_foot", bounds.position.y)
-		piece.set_instance_shader_parameter("stiff_height", bounds.size.y)
+			piece.set_surface_override_material(surface, _material_for(from, is_seabed, sway))
 
 
 ## Gives a batch of painted pieces the look a single one gets from `_dress_mesh`. Every kit mesh has one
@@ -389,16 +382,20 @@ func _dress_mesh(piece: MeshInstance3D) -> void:
 func dress_batch(batch: MultiMeshInstance3D, mesh: Mesh) -> void:
 	var from := mesh.surface_get_material(0)
 	if _is_dressed(from):
-		batch.material_override = _material_for(from, false)
+		batch.material_override = _material_for(from, false, _sway_of(mesh))
+
+
+## How a mesh sways, as the shaders' flex, stiff_foot and stiff_height: how freely it bends, and for a stiff
+## coral, the height of its foot and how tall it is.
+static func _sway_of(mesh: Mesh) -> Vector3:
 	var name_of_mesh := _name_in_the_game(mesh.resource_name)
 	var flex := _flex_of(name_of_mesh)
 	if flex <= 0.0:
-		return
-	batch.set_instance_shader_parameter("flex", flex)
-	if name_of_mesh.begins_with("prop_"):
-		var bounds := mesh.get_aabb()
-		batch.set_instance_shader_parameter("stiff_foot", bounds.position.y)
-		batch.set_instance_shader_parameter("stiff_height", bounds.size.y)
+		return Vector3.ZERO
+	if not name_of_mesh.begins_with("prop_"):
+		return Vector3(flex, 0.0, 0.0)
+	var bounds := mesh.get_aabb()
+	return Vector3(flex, bounds.position.y, bounds.size.y)
 
 
 ## Only what the scene owns can be saved with it. A mesh inside a placed piece belongs to that piece's
@@ -410,9 +407,6 @@ func _undress_all_under(node: Node) -> void:
 		for surface in node.mesh.get_surface_count():
 			if _dressed.values().has(node.get_surface_override_material(surface)):
 				node.set_surface_override_material(surface, null)
-		for parameter in ["flex", "stiff_foot", "stiff_height"]:
-			if node.get_instance_shader_parameter(parameter) != null:
-				node.set_instance_shader_parameter(parameter, null)
 	for child in node.get_children():
 		_undress_all_under(child)
 
@@ -434,10 +428,16 @@ static func _seen_through(material: BaseMaterial3D) -> Seen:
 	return Seen.DITHERED
 
 
-func _material_for(from: BaseMaterial3D, is_seabed: bool) -> ShaderMaterial:
-	if _dressed.has(from):
-		return _dressed[from]
+## The game's lighting for a piece that came with `from`, swaying as `sway` says (see `_sway_of`). Every
+## piece with the same of both shares one.
+func _material_for(from: BaseMaterial3D, is_seabed: bool, sway := Vector3.ZERO) -> ShaderMaterial:
+	var key := [from, sway]
+	if _dressed.has(key):
+		return _dressed[key]
 	var material := ShaderMaterial.new()
+	material.set_shader_parameter("flex", sway.x)
+	material.set_shader_parameter("stiff_foot", sway.y)
+	material.set_shader_parameter("stiff_height", sway.z)
 	var two_sided := from.cull_mode == BaseMaterial3D.CULL_DISABLED
 	var seen := _seen_through(from)
 	material.shader = _reef_lit[seen][two_sided]
@@ -458,7 +458,7 @@ func _material_for(from: BaseMaterial3D, is_seabed: bool) -> ShaderMaterial:
 	else:
 		material.set_shader_parameter("albedo_tex", from.albedo_texture)
 		material.set_shader_parameter("base_colour", tint)
-	_dressed[from] = material
+	_dressed[key] = material
 	return material
 
 

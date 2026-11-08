@@ -31,10 +31,12 @@ uniform float grow = 0.0;
 uniform float alpha_cut = 0.5;
 #endif
 
-// How freely this piece bends, and for a stiff coral, the height of its foot and how tall it is.
-instance uniform float flex = 0.0;
-instance uniform float stiff_foot = 0.0;
-instance uniform float stiff_height = 0.0;
+// How freely this kind of piece bends, and for a stiff coral, the height of its foot and how tall it is.
+// They are the material's, not each piece's: Godot has room for only so many values of a piece's own, and a
+// map of thousands of pieces ran out of it (#297).
+uniform float flex = 0.0;
+uniform float stiff_foot = 0.0;
+uniform float stiff_height = 0.0;
 
 varying vec3 world_at;
 varying vec2 uv_here;
