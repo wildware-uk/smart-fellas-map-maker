@@ -2723,9 +2723,11 @@ static func _poses_text(scene: Scene) -> String:
 		var arms: Array[String] = []
 		for arm: Variant in pose["arms"]:
 			arms.append(_pose_part(arm if arm is Dictionary else {}))
-		text += "        (version: %d, name: %s, sits: %s, suckers: %s, eyes: %s, lit: %s, body: %s, arms: (%s)),\n" % [
+		var water: Variant = pose.get("water", {})
+		text += "        (version: %d, name: %s, sits: %s, suckers: %s, eyes: %s, lit: %s, body: %s, arms: (%s), water: %s),\n" % [
 			OctopusPose.VERSION, _quoted(String(node.name)), pose["sits"], pose["suckers"], pose["eyes"], pose["lit"],
 			_pose_part(pose["body"] if pose["body"] is Dictionary else {}), ", ".join(arms),
+			_pose_part(water if water is Dictionary else {}),
 		]
 	return text + "    ],\n"
 

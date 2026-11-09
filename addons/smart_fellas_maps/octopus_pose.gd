@@ -31,6 +31,9 @@ const SKIN := Color(0.63, 0.42, 0.34)
 ## How the arms are counted, in the order the game holds them.
 const ARMS := 8
 
+## How often the octopus is drawn again while the water plays, in seconds.
+const PLAY_EVERY := 0.1
+
 ## Says the octopus has been drawn again, with new tips for the handles.
 signal drawn
 
@@ -50,9 +53,18 @@ var chosen_arm := 0:
 	set(value):
 		chosen_arm = value
 		update_gizmos()
+## Whether the octopus moves with the water as the pose says, rippling and swaying, or holds still.
+var playing := false:
+	set(value):
+		playing = value
+		_played = 0.0
+		_stale = true
 
 var _drawing: MeshInstance3D
 var _stale := true
+## How long the water has played, and how long since the octopus was last drawn moving, in seconds.
+var _played := 0.0
+var _since_drawn := 0.0
 var _known_name := ""
 static var _triangles := PackedInt32Array()
 
@@ -73,8 +85,15 @@ func _ready() -> void:
 		wear_offering_look.call_deferred()
 
 
-func _process(_delta: float) -> void:
-	if _stale and Engine.is_editor_hint() and is_visible_in_tree():
+func _process(delta: float) -> void:
+	if not Engine.is_editor_hint() or not is_visible_in_tree():
+		return
+	if playing:
+		_played += delta
+		_since_drawn += delta
+		if _stale or _since_drawn >= PLAY_EVERY:
+			redraw()
+	elif _stale:
 		redraw()
 
 
@@ -90,7 +109,9 @@ func file_pose() -> Dictionary:
 ## Asks the game to draw the octopus in the pose again, now.
 func redraw() -> void:
 	_stale = false
-	var answer := PoseLink.draw(file_pose())
+	_since_drawn = 0.0
+	var up := global_basis.y.normalized() if is_inside_tree() else Vector3.UP
+	var answer := PoseLink.draw(file_pose(), _played if playing else -1.0, up)
 	problem = str(answer.get("problem", "")) if answer.get("problem") != null else ""
 	if not answer.has("skin"):
 		_drawing.mesh = null
@@ -230,7 +251,7 @@ static func rest_pose() -> Dictionary:
 	var arms := []
 	for arm in ARMS:
 		arms.append({})
-	return {"version": VERSION, "name": "", "sits": "Floor", "suckers": "Hidden", "eyes": "Covered", "lit": "OwnShape", "body": {}, "arms": arms}
+	return {"version": VERSION, "name": "", "sits": "Floor", "suckers": "Hidden", "eyes": "Covered", "lit": "OwnShape", "body": {}, "arms": arms, "water": {}}
 
 
 ## How a pose dropped on a surface facing `normal` sits: on a floor, a wall or a ceiling.

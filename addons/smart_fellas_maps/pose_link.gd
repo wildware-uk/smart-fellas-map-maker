@@ -5,7 +5,9 @@ extends RefCounted
 ## game runs for the whole editor session, with no window: the add-on sends one question a line, as JSON,
 ## and reads one answer a line.
 
-const GameFinder := preload("game_finder.gd")
+## Where the game finder is: loaded when the game is first started, not with the add-on, as only drawing a
+## pose needs it (see tests/startup_test.gd).
+const GAME_FINDER := "res://addons/smart_fellas_maps/game_finder.gd"
 
 ## What the game says first, then the map maker version it speaks, as map_tester.gd reads it.
 const VERSION_MARK := "map maker version: "
@@ -39,9 +41,15 @@ static func start() -> Dictionary:
 
 
 ## The octopus in `pose` (a pose as a pose file holds it, as a Dictionary): {"skin", "web", "tips",
-## "problem"} as src/pose/studio/godot.rs gives them, or {"problem"} alone if the game can't say.
-static func draw(pose: Dictionary) -> Dictionary:
-	return _ask({"ask": "draw", "pose": pose})
+## "problem"} as src/pose/studio/godot.rs gives them, or {"problem"} alone if the game can't say. In still
+## water, or with a `time` of 0 or more, that many seconds into the water's play, moving as the pose says,
+## standing out from its surface along `up` in the map, which turns the current as the game does.
+static func draw(pose: Dictionary, time := -1.0, up := Vector3.UP) -> Dictionary:
+	var question := {"ask": "draw", "pose": pose}
+	if time >= 0.0:
+		question["time"] = time
+		question["up"] = [up.x, up.y, up.z]
+	return _ask(question)
 
 
 ## Arm `arm` of `pose` bent to bring its tip near `to`, in the pose's own frame: {"arm"} or {"problem"}.
@@ -95,9 +103,10 @@ static func _running() -> bool:
 	if _pid > 0 and OS.is_process_running(_pid) and _pipe != null:
 		return true
 	stop()
-	var game := GameFinder.starter_of(GameFinder.find(_chosen_game()))
+	var finder: GDScript = load(GAME_FINDER)
+	var game: String = finder.starter_of(finder.find(_chosen_game(finder)))
 	if game.is_empty():
-		_fail("Can't draw the octopus: %s" % GameFinder.not_found_words())
+		_fail("Can't draw the octopus: %s" % finder.not_found_words())
 		return false
 	if _failed:
 		return false
@@ -133,11 +142,12 @@ static func _fail(why: String) -> void:
 	_failed = true
 
 
-static func _chosen_game() -> String:
+static func _chosen_game(finder: GDScript) -> String:
 	if not Engine.is_editor_hint():
 		return ""
 	var settings := EditorInterface.get_editor_settings()
-	return settings.get_setting(GameFinder.CHOSEN_KEY) if settings.has_setting(GameFinder.CHOSEN_KEY) else ""
+	var key: String = finder.get_script_constant_map()["CHOSEN_KEY"]
+	return settings.get_setting(key) if settings.has_setting(key) else ""
 
 
 ## The next whole line from the game, waiting at most `milliseconds`, or null if none came or the game

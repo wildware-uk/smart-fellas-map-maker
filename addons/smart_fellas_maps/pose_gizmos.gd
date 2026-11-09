@@ -45,7 +45,8 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	if drawing != null and drawing.mesh != null:
 		gizmo.add_collision_triangles(drawing.mesh.generate_triangle_mesh())
 	var tips: PackedVector3Array = pose.tips
-	if tips.is_empty():
+	# While the water plays, the arms move off where their tips rest, so there's nothing steady to drag.
+	if tips.is_empty() or pose.playing:
 		return
 	var others := PackedVector3Array()
 	var other_ids := PackedInt32Array()

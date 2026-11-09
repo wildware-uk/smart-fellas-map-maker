@@ -3,7 +3,8 @@ extends VBoxContainer
 ## The Pose panel: drops octopus poses on the map, and shapes the one selected with the same dials as the
 ## game's pose studio: each arm's lift, spread, curl, twist, length and thickness, the head and mantle, how
 ## it sits, and whether its suckers and eyes show. Dragging the dot on an arm's tip in the 3D view bends that
-## arm to follow the mouse. Every change goes through Godot's undo and is saved with the map.
+## arm to follow the mouse. Wave and Sway set how it moves with the water, which Play the water shows. Every
+## change goes through Godot's undo and is saved with the map.
 
 ## The Add button was pressed, to drop a pose with the marker tool, or let go ("").
 signal placing_asked(kind: String)
@@ -29,6 +30,8 @@ var _choices := {}
 var _arm_choice: OptionButton
 var _arm_dials := {}
 var _body_dials := {}
+var _water_dials := {}
+var _play: CheckButton
 var _pose: Node3D
 ## Whether the controls are being set to what the pose says, so their signals change nothing.
 var _showing := false
@@ -69,8 +72,11 @@ func show_placing(placing: bool) -> void:
 
 ## Shapes `pose`, an octopus pose node, or shows that none is selected.
 func show_pose(pose: Node3D) -> void:
-	if _pose != null and is_instance_valid(_pose) and _pose.drawn.is_connected(_show_values):
-		_pose.drawn.disconnect(_show_values)
+	if _pose != null and is_instance_valid(_pose):
+		if _pose.drawn.is_connected(_show_values):
+			_pose.drawn.disconnect(_show_values)
+		if _pose != pose:
+			_pose.playing = false
 	_pose = pose
 	_nothing_chosen.visible = pose == null
 	_editor.visible = pose != null
@@ -80,6 +86,7 @@ func show_pose(pose: Node3D) -> void:
 	if _start.is_empty():
 		_start = PoseLink.start()
 		_build_editor()
+	pose.playing = _play != null and is_instance_valid(_play) and _play.button_pressed
 	_show_values()
 
 
@@ -88,6 +95,8 @@ func _build_editor() -> void:
 		child.queue_free()
 	_arm_dials.clear()
 	_body_dials.clear()
+	_water_dials.clear()
+	_play = null
 	_choices.clear()
 	_title = _label(_editor, "")
 	_title.add_theme_color_override("font_color", OctopusPose.COLOUR.lightened(0.3))
@@ -144,9 +153,20 @@ func _build_editor() -> void:
 	_heading("Head and mantle")
 	for dial: Dictionary in _start["body_dials"]:
 		_body_dials[dial["part"]] = _dial_row(dial, _on_body_dial.bind(dial["part"]))
+	_heading("In the water")
+	_label(_editor, "Wave runs ripples up the arms, as the water moves weed. Sway lets the current bend the arms, from stiff like coral at 0 to streaming like weed at 1.")
+	for dial: Dictionary in _start.get("water_dials", []):
+		_water_dials[dial["part"]] = _dial_row(dial, _on_water_dial.bind(dial["part"]))
+	_play = CheckButton.new()
+	_play.text = "Play the water"
+	_play.tooltip_text = "Shows the selected pose moving with the water, as players will see it. Turn it off to drag the dots on the arms' tips again."
+	_play.toggled.connect(func(on: bool) -> void:
+		if _pose != null and is_instance_valid(_pose):
+			_pose.playing = on)
+	_editor.add_child(_play)
 	_editor.add_child(HSeparator.new())
 	var rest := HFlowContainer.new()
-	_button(rest, "Back to rest", "Puts every arm, the head and the mantle back at rest.", _back_to_rest)
+	_button(rest, "Back to rest", "Puts every arm, the head and the mantle back at rest, holding still.", _back_to_rest)
 	_editor.add_child(rest)
 
 
@@ -177,6 +197,9 @@ func _show_values() -> void:
 	var body := _body_of(pose)
 	for part: String in _body_dials:
 		_set_row(_body_dials[part], body[part])
+	var water := _water_of(pose)
+	for part: String in _water_dials:
+		_set_row(_water_dials[part], water[part])
 	_showing = false
 
 
@@ -190,6 +213,13 @@ func _arm_of(pose: Dictionary, arm: int) -> Dictionary:
 func _body_of(pose: Dictionary) -> Dictionary:
 	var whole: Dictionary = _start["fresh"]["body"].duplicate()
 	whole.merge(pose["body"], true)
+	return whole
+
+
+func _water_of(pose: Dictionary) -> Dictionary:
+	var whole: Dictionary = _start["fresh"].get("water", {}).duplicate()
+	var given: Variant = pose.get("water", {})
+	whole.merge(given if given is Dictionary else {}, true)
 	return whole
 
 
@@ -255,6 +285,16 @@ func _on_body_dial(value: float, part: String) -> void:
 		pose["body"] = body)
 
 
+func _on_water_dial(value: float, part: String) -> void:
+	if _showing:
+		return
+	_change("Change how it moves", func(pose: Dictionary) -> void:
+		var water: Variant = pose.get("water", {})
+		water = (water as Dictionary).duplicate() if water is Dictionary else {}
+		water[part] = value
+		pose["water"] = water)
+
+
 func _copy_to_all() -> void:
 	var from := maxi(_pose.chosen_arm, 0)
 	_change("Copy arm %d to all" % (from + 1), func(pose: Dictionary) -> void:
@@ -270,7 +310,8 @@ func _mirror(from_left: bool) -> void:
 func _back_to_rest() -> void:
 	_change("Back to rest", func(pose: Dictionary) -> void:
 		pose["body"] = {}
-		pose["arms"] = OctopusPose.rest_pose()["arms"])
+		pose["arms"] = OctopusPose.rest_pose()["arms"]
+		pose["water"] = {})
 
 
 func _dial_row(dial: Dictionary, changed: Callable) -> Dictionary:
