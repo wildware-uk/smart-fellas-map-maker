@@ -611,9 +611,19 @@ static func _beside_a_rock(map: SmartFellasMap, rng: RandomNumberGenerator, find
 static func _near_a_marker(map: SmartFellasMap, at: Vector3, within: float) -> bool:
 	for child in map.get_children():
 		var marker := child as Marker3D
-		if marker != null and marker.global_position.distance_to(at) < within:
+		if marker != null and not MapExporter.hidden_by_eye(marker) and marker.global_position.distance_to(at) < within:
 			return true
 	return false
+
+
+## The map's markers of `kind` that are in the map: not those hidden with the eye in the Scene panel, or in
+## a hidden group, which Export leaves out.
+static func _markers_in_map(map: SmartFellasMap, kind: String) -> Array[Node]:
+	var found: Array[Node] = []
+	for marker in MarkerKinds.markers_of(map, kind):
+		if not MapExporter.hidden_in(marker, map):
+			found.append(marker)
+	return found
 
 
 ## New markers in the groups `ticked`, not yet in the map.
@@ -626,7 +636,7 @@ static func _new_markers(map: SmartFellasMap, going: Array[Marker3D], rng: Rando
 		_add_creatures(map, going, rng, finder, made, zones)
 	if "spawns" in ticked:
 		for team: String in ["spawn_octopus", "spawn_diver"]:
-			var held := MarkerKinds.markers_of(map, team).filter(func(marker: Node) -> bool: return not marker in going)
+			var held := _markers_in_map(map, team).filter(func(marker: Node) -> bool: return not marker in going)
 			if held.is_empty():
 				_add_spawns(map, team, rng, finder, made, zones)
 	return made
@@ -635,7 +645,7 @@ static func _new_markers(map: SmartFellasMap, going: Array[Marker3D], rng: Rando
 static func _add_food(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNumberGenerator, finder: SurfaceFinder, made: Array[Marker3D], zones: Array[Dictionary]) -> void:
 	var taken: Array[Vector3] = []
 	var patches_held := 0
-	for marker in MarkerKinds.markers_of(map, "food_patch"):
+	for marker in _markers_in_map(map, "food_patch"):
 		if not marker in going:
 			taken.append((marker as Node3D).global_position)
 			patches_held += 1
@@ -653,7 +663,7 @@ static func _add_food(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNu
 static func _add_creatures(map: SmartFellasMap, going: Array[Marker3D], rng: RandomNumberGenerator, finder: SurfaceFinder, made: Array[Marker3D], zones: Array[Dictionary]) -> void:
 	var fish_held := 0
 	for kind: String in ["fish_flounder", "fish_lionfish"]:
-		for marker in MarkerKinds.markers_of(map, kind):
+		for marker in _markers_in_map(map, kind):
 			if not marker in going:
 				fish_held += 1
 	var fish := mini(roundi(_area_of(map) / SQUARE_METRES_A_FISH), MapExporter.MOST_FISH - fish_held)
@@ -671,7 +681,7 @@ static func _add_creatures(map: SmartFellasMap, going: Array[Marker3D], rng: Ran
 	for kind: String in ["stingray", "wrasse"]:
 		if kind == "stingray" and not map.stingrays:
 			continue
-		var held := MarkerKinds.markers_of(map, kind).filter(func(marker: Node) -> bool: return not marker in going).size()
+		var held := _markers_in_map(map, kind).filter(func(marker: Node) -> bool: return not marker in going).size()
 		var placed := 0
 		for _try in MARKER_TRIES:
 			if placed >= mini(haunts, MapExporter.MOST_HAUNTS) - held:
@@ -691,7 +701,7 @@ static func _add_spawns(map: SmartFellasMap, team: String, rng: RandomNumberGene
 	var middle := _middle(map)
 	var lurking: Array[Vector3] = []
 	for kind: String in CREATURE_KINDS:
-		for marker in MarkerKinds.markers_of(map, kind):
+		for marker in _markers_in_map(map, kind):
 			lurking.append((marker as Node3D).global_position)
 	var placed: Array[Vector3] = []
 	for _try in MARKER_TRIES * SPAWNS_A_TEAM * 2:

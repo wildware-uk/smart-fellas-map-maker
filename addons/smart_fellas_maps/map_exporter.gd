@@ -1023,6 +1023,17 @@ static func hidden_by_eye(node: Node) -> bool:
 	return node is Node3D and not node.visible and not _is_the_seabed(node)
 
 
+## Whether `node`, somewhere under `root`, is out of the map for being hidden: it, or a group it's in, is
+## hidden with the eye, as hidden_by_eye says.
+static func hidden_in(node: Node, root: Node) -> bool:
+	var at := node
+	while at != null and at != root:
+		if hidden_by_eye(at):
+			return true
+		at = at.get_parent()
+	return false
+
+
 ## Whether `node` is the map's flat Seabed: the first node of that name, the one map_root.gd's show_seabed
 ## finds, not any other that happens to share the name.
 static func _is_the_seabed(node: Node) -> bool:
@@ -1030,6 +1041,14 @@ static func _is_the_seabed(node: Node) -> bool:
 		return false
 	var root := _root_of(node)
 	return root != null and root.find_child("Seabed", true, true) == node
+
+
+## How many kit pieces are anywhere under `node`, in scenes inside it and hidden ones too.
+static func _count_kit_pieces(node: Node) -> int:
+	var count := 0
+	for child in node.get_children():
+		count += 1 if child.scene_file_path.begins_with(KIT_FOLDER) else _count_kit_pieces(child)
+	return count
 
 
 ## Whether there are kit pieces inside this scene-in-a-scene, where Export can't see them.
@@ -1354,6 +1373,10 @@ static func _read_children(node: Node, scene: Scene, hider: Node = null) -> void
 			var path: String = child.scene_file_path
 			if hidden and (path.begins_with(KIT_FOLDER) or path.get_extension().to_lower() in ["glb", "gltf"]):
 				scene.left_out_hidden(hidden_by, "pieces")
+			elif hidden:
+				# A scene of the map maker's own is left out whole, so the kit pieces in it needn't be made local.
+				for _piece in _count_kit_pieces(child):
+					scene.left_out_hidden(hidden_by, "pieces")
 			elif not path.begins_with(KIT_FOLDER) and _holds_kit_pieces(child):
 				scene.problem_on(child, "%s is a scene inside this one, and Export can't see the pieces in it. Right-click it in the Scene panel and choose Make Local." % child.name)
 			continue

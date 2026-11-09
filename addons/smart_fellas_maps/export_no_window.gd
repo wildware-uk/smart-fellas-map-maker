@@ -33,22 +33,29 @@ func _initialize() -> void:
 	quit(0 if result.has("package") else 1)
 
 
-## One line per piece: its kit name, its origin and three axes as Godot holds them, then the box its
-## mesh's real points fill in the world. Then one line per marker: its name, origin and three axes.
 func _write_view(root: Node, path: String) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string("\n".join(view_lines(root)) + "\n")
+	file.close()
+
+
+## One line per piece: its kit name, its origin and three axes as Godot holds them, then the box its
+## mesh's real points fill in the world. Then one line per marker: its name, origin and three axes. Like
+## Export, it leaves out pieces and markers hidden with the eye in the Scene panel, or in a hidden group.
+static func view_lines(root: Node) -> PackedStringArray:
 	var lines := PackedStringArray()
 	for found in MapExporter.kit_pieces(root):
 		for mesh_node in found["node"].find_children("*", "MeshInstance3D", true, false):
 			lines.append(_view_line(found["kit"], mesh_node))
 	for marker in root.find_children("*", "Marker3D", true, false):
+		if MapExporter.hidden_in(marker, root):
+			continue
 		var place: Transform3D = marker.global_transform
 		lines.append(_numbers(marker.name, [place.origin, place.basis.x, place.basis.y, place.basis.z]))
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	file.store_string("\n".join(lines) + "\n")
-	file.close()
+	return lines
 
 
-func _view_line(kit: String, mesh_node: MeshInstance3D) -> String:
+static func _view_line(kit: String, mesh_node: MeshInstance3D) -> String:
 	var place: Transform3D = mesh_node.global_transform
 	var low := Vector3.INF
 	var high := -Vector3.INF
@@ -62,7 +69,7 @@ func _view_line(kit: String, mesh_node: MeshInstance3D) -> String:
 	return _numbers(kit, [place.origin, place.basis.x, place.basis.y, place.basis.z, low, high])
 
 
-func _numbers(name: String, vectors: Array) -> String:
+static func _numbers(name: String, vectors: Array) -> String:
 	var words := PackedStringArray([name])
 	for at in vectors:
 		words.append("%.7f %.7f %.7f" % [at.x, at.y, at.z])

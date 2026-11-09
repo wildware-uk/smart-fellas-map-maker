@@ -6,6 +6,7 @@ extends RefCounted
 
 const Brush := preload("brush.gd")
 const BrushTool := preload("brush_tool.gd")
+const MapExporter := preload("map_exporter.gd")
 const MarkerKinds := preload("marker_kinds.gd")
 const Zone := preload("populate_zone.gd")
 const TriggerZone := preload("trigger_zone.gd")
@@ -188,13 +189,20 @@ func draw(overlay: Control, camera: Camera3D) -> void:
 
 ## A dot on each marker, the same size however far off it is, so that a map's markers can be seen from afar.
 func _draw_markers(overlay: Control, camera: Camera3D) -> void:
+	for marker in dotted_markers():
+		if not camera.is_position_behind(marker.global_position):
+			var colour: Color = MarkerKinds.KINDS[MarkerKinds.kind_of(marker.name)]["colour"]
+			overlay.draw_circle(camera.unproject_position(marker.global_position), DOT_RADIUS, colour)
+
+
+## The markers that get a dot: the map's own, not one hidden with its eye, which Export leaves out.
+func dotted_markers() -> Array[Marker3D]:
+	var found: Array[Marker3D] = []
 	for child in map.get_children():
 		var marker := child as Marker3D
-		if marker == null or camera.is_position_behind(marker.global_position):
-			continue
-		var kind_here := MarkerKinds.kind_of(marker.name)
-		if not kind_here.is_empty():
-			overlay.draw_circle(camera.unproject_position(marker.global_position), DOT_RADIUS, MarkerKinds.KINDS[kind_here]["colour"])
+		if marker != null and not MapExporter.hidden_by_eye(marker) and not MarkerKinds.kind_of(marker.name).is_empty():
+			found.append(marker)
+	return found
 
 
 ## What each of Populate's zones is, and each trigger zone's name for the map's script, written at its
@@ -217,14 +225,24 @@ func _draw_words_at(overlay: Control, camera: Camera3D, at: Vector3, words: Stri
 
 ## The goblin shark's loop, point to point and back to the first, in the order of their numbers.
 func _draw_route(overlay: Control, camera: Camera3D) -> void:
-	var route := MarkerKinds.markers_of(map, "goblin_route")
+	var route := route_points()
 	if route.size() < 2:
 		return
-	route.sort_custom(func(one: Node, other: Node) -> bool:
-		return MarkerKinds.number_of(one.name, "goblin_route") < MarkerKinds.number_of(other.name, "goblin_route"))
 	var colour: Color = MarkerKinds.KINDS["goblin_route"]["colour"]
 	for index in route.size():
 		var from: Vector3 = route[index].global_position
 		var to: Vector3 = route[(index + 1) % route.size()].global_position
 		if not camera.is_position_behind(from) and not camera.is_position_behind(to):
 			overlay.draw_line(camera.unproject_position(from), camera.unproject_position(to), colour, 2.0, true)
+
+
+## The goblin shark's route points in the map, in the order of their numbers: not one hidden with the eye,
+## or in a hidden group, which Export leaves out.
+func route_points() -> Array[Node]:
+	var route: Array[Node] = []
+	for point in MarkerKinds.markers_of(map, "goblin_route"):
+		if not MapExporter.hidden_in(point, map):
+			route.append(point)
+	route.sort_custom(func(one: Node, other: Node) -> bool:
+		return MarkerKinds.number_of(one.name, "goblin_route") < MarkerKinds.number_of(other.name, "goblin_route"))
+	return route
