@@ -26,6 +26,8 @@ const WaterView := preload("water/water_view.gd")
 ## add-on preloads before the editor can open a map, so these would slow every opening (#291).
 const MAP_TESTER := "res://addons/smart_fellas_maps/map_tester.gd"
 const TEST_RESULTS := "res://addons/smart_fellas_maps/test_results.gd"
+## Where Grade it exports a map for the game to grade, out of the way of the game's own maps folder.
+const GRADE_FOLDER := "user://smart_fellas_grade"
 
 ## Where the Map, Paint and Water panels go: under the Inspector, in a dock of their own. Beside the Inspector,
 ## Node and Groups, a narrow dock hid their tabs behind its arrows.
@@ -164,6 +166,7 @@ func _enter_tree() -> void:
 	_map_panel.gathered = _play_area.gathered
 	_map_panel.show_play_area_shown(_play_area.shown)
 	_map_panel.play_area_toggled.connect(_on_play_area_toggled)
+	_map_panel.grade_asked.connect(_grade)
 	_pieces_panel = PiecesPanel.new()
 	_pieces_panel.piece_clicked.connect(_on_piece_clicked)
 	_pieces_panel.drag_started.connect(_on_piece_drag_started)
@@ -534,7 +537,19 @@ func _export() -> void:
 	var result := await _export_and_check("")
 	if _closed:
 		return
+	_map_panel.show_grade(result)
 	_show_results("Export Map", result)
+
+
+## Exports the map to a folder of the add-on's own, never the game's, for the game to grade it (#299).
+func _grade() -> void:
+	var folder := ProjectSettings.globalize_path(GRADE_FOLDER)
+	var result := await _export_and_check(folder)
+	# Only the grade is wanted: the export, pictures and all, goes as soon as the game has read it.
+	_tester().MapExporter._remove_folder(folder)
+	if _closed:
+		return
+	_map_panel.show_grade(result)
 
 
 ## Asks for a folder, then exports there rather than into the game.
@@ -548,6 +563,7 @@ func _export_to_folder() -> void:
 		var result := await _export_and_check(folder)
 		if _closed:
 			return
+		_map_panel.show_grade(result)
 		_show_results("Export to Folder", result))
 	picker.canceled.connect(picker.queue_free)
 	EditorInterface.get_base_control().add_child(picker)
@@ -563,6 +579,7 @@ func _test() -> void:
 		result = await _export_and_check(_tester().MapExporter.default_out_folder())
 		if _closed:
 			return
+	_map_panel.show_grade(result)
 	if result["state"] != _tester().State.FINE:
 		_show_results("Test Map", result)
 		return

@@ -25,6 +25,11 @@ const MAPS_FOLDER_MARK := "maps folder: "
 ## What marks the line where the game says which map maker version it is at. A game from before it said
 ## one says nothing.
 const GAME_VERSION_MARK := "map maker version: "
+## What marks the line where the game says a map's performance grade, and each line saying one of the things
+## that cost it the most, heaviest first (#299). A game from before maps were graded says neither.
+const GRADE_MARK := "map grade: "
+const MEANING_MARK := "map grade means: "
+const HEAVIEST_MARK := "map heaviest: "
 ## What marks each line where the game says what is wrong with one of the map's scripts.
 const SCRIPT_PROBLEM_MARK := "script problem: "
 ## The types file Export keeps in a map's scripts folder, so the map maker's editor completes and checks
@@ -249,7 +254,7 @@ static func read_answer(code: int, said: String, game: String) -> Dictionary:
 	var problems: Array[String] = []
 	var older := is_older(said)
 	if code == 0:
-		return _noting_older({"problems": problems}, older)
+		return _noting_older(read_grade(said, {"problems": problems}), older)
 	var others: Array[String] = []
 	for line in _lines_of(said):
 		if line.begins_with(PROBLEM_MARK):
@@ -262,6 +267,38 @@ static func read_answer(code: int, said: String, game: String) -> Dictionary:
 	if others.is_empty():
 		return {"failed": words + " Try opening it by itself."}
 	return {"failed": "%s It said:\n%s" % [words, "\n".join(others)]}
+
+
+## `answer` with the performance grade the game said, as "grade", what it means for a player, as
+## "meaning", and what costs the map the most, as "heaviest", if it said them.
+static func read_grade(said: String, answer: Dictionary) -> Dictionary:
+	var heaviest: Array[String] = []
+	for line in _lines_of(said):
+		if line.begins_with(GRADE_MARK):
+			answer["grade"] = line.trim_prefix(GRADE_MARK)
+		elif line.begins_with(MEANING_MARK):
+			answer["meaning"] = line.trim_prefix(MEANING_MARK)
+		elif line.begins_with(HEAVIEST_MARK):
+			heaviest.append(line.trim_prefix(HEAVIEST_MARK))
+	if answer.has("grade"):
+		answer["heaviest"] = heaviest
+	return answer
+
+
+## The grade in a few lines, as the Map panel and Export's results say it: "Performance: Heavy, may run
+## slowly on mid-level computers." and what costs it the most. Empty if the game said no grade.
+static func grade_words(answer: Dictionary) -> String:
+	if not answer.has("grade"):
+		return ""
+	var words := "Performance: %s" % answer["grade"]
+	if answer.has("meaning"):
+		words += ", %s." % answer["meaning"]
+	var heaviest: Array = answer.get("heaviest", [])
+	if not heaviest.is_empty():
+		words += " What costs it the most:"
+		for weight: String in heaviest:
+			words += "\n  - %s" % weight
+	return words
 
 
 ## Whether what the game said shows it older than this add-on: a map maker version below what the add-on
@@ -386,9 +423,16 @@ static func export_and_check(root: Node, out_folder: String, chosen_game: String
 		lines.push_front(older_but_took_it(game))
 	if problems.is_empty():
 		var fine := "%s\n\nThe game's checker found nothing wrong." % went
+		var graded := grade_words(checked)
+		if not graded.is_empty():
+			fine += "\n\n" + graded
 		if not lines.is_empty():
-			fine += " Worth a look, though:"
-		return {"state": State.FINE, "folder": folder, "game": game, "words": fine, "lines": lines}
+			fine += "\n\nWorth a look, though:"
+		var done := {"state": State.FINE, "folder": folder, "game": game, "words": fine, "lines": lines}
+		for key in ["grade", "meaning", "heaviest"]:
+			if checked.has(key):
+				done[key] = checked[key]
+		return done
 	lines.clear()
 	for words in problems:
 		lines.append(_line_about(words, exported["sources"]))

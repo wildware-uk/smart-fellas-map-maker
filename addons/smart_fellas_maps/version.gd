@@ -8,8 +8,9 @@ const RELEASES_URL := "https://github.com/wildware-uk/smart-fellas-map-maker/rel
 const UNKNOWN := "unknown"
 ## The map maker version the game must say, at least, for this add-on: what it can take from the add-on.
 ## The game's MAP_MAKER_VERSION in src/map/check.rs; raise the two together. 5: the game takes maps of
-## any size and detail, with only guards against broken files (#299).
-const GAME_NEEDS := 5
+## any size and detail, with only guards against broken files (#299). 6: it takes any number of materials,
+## play areas up to 4 km across and pictures past what fits, and grades every map it checks (#299).
+const GAME_NEEDS := 6
 
 
 static func number() -> String:

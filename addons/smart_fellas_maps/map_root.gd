@@ -112,7 +112,7 @@ var area_depth: float:
 @export var cave_sounds := false
 @export var goblin_shark := false
 ## How many anglerfish lie about at once, of the spots the map lists.
-@export_range(1, 8) var anglers_at_once := 3
+@export_range(1, 64) var anglers_at_once := 3
 
 @export_group("Water")
 ## How deep the map is, in metres: the deeper, the darker. The Water panel has quick choices.

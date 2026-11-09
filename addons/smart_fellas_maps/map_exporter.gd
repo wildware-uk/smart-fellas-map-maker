@@ -47,10 +47,14 @@ const MOST_ENTRIES := 32768
 ## broken or hostile file, far past any real model: how heavy a map is goes in its performance score.
 const MOST_MODEL_TRIANGLES := 10000000
 const MOST_MODEL_CORNERS := 20000000
-const MOST_MODEL_MATERIALS := 8
-const MOST_MODEL_PICTURES := 8
+const MOST_MODEL_MATERIALS := 1024
+const MOST_MODEL_PICTURES := 1024
+## How many materials each model Export builds from a mesh holds at most: a mesh of more becomes several
+## models in one place. The game takes far more in one (MOST_MODEL_MATERIALS); this is only how Export has
+## always built them, which looks the same in the game.
+const SPLIT_MATERIALS := 8
 ## The game's MAX_PRIMITIVES: the most surfaces one mesh of a model may have.
-const MOST_PRIMITIVES := 16
+const MOST_PRIMITIVES := 4096
 const MOST_PICTURE_SIDE := 8192
 ## What Export says of scenery left out for standing further than SCENERY_REACH from the middle of the map.
 const TOO_FAR := "The game takes nothing further than 4 km from the middle of the map: move it in."
@@ -76,8 +80,9 @@ const CORNER_COLOURS_EXTRA := "smart_fellas_vertex_colour"
 ## takes.
 const SMALLEST_PICTURE_SIDE := 256
 ## The game's limits on all the map's own models together, from src/map/check.rs. Materials that look the
-## same count once, and so does a picture many models share.
-const MOST_MAP_MATERIALS := 1536
+## same count once, and so does a picture many models share. Each only stops a broken or hostile file
+## (#299): past 1,536 materials the game still draws each one, and an octopus copies the closest of those.
+const MOST_MAP_MATERIALS := 60000
 const MOST_MAP_TRIANGLES := 100000000
 const MOST_MAP_CORNERS := 100000000
 const MOST_MAP_PICTURE_BYTES := 2147483648
@@ -87,8 +92,9 @@ const MOST_SCALED_TRIANGLES := 50000000
 ## How near its own size a piece is taken as not resized at all: a tenth of a millimetre in a metre, too
 ## little to see, and well over what turning it rounds to.
 const NOT_RESIZED := 0.0001
-## The game's MAX_MAP_PICTURE_PIXELS: the most pixels the map's own pictures may hold between them, each
-## different one once, as the game draws them, no more than PICTURE_SIDE_DRAWN across.
+## The game's MAX_MAP_PICTURE_PIXELS: the most pixels the game draws the map's own pictures with between
+## them, each different one once, no more than PICTURE_SIDE_DRAWN across. Export shrinks them to fit, which
+## keeps them sharp where it can; the game shrinks them further itself, so it never refuses a map (#299).
 const MOST_PICTURE_PIXELS := 100000000
 ## The most pixels Export lets the map's own models' pictures hold: MOST_PICTURE_PIXELS, but for a test
 ## that wants to reach it with a few small pictures.
@@ -109,11 +115,11 @@ const SCALES := Vector2(0.1, 10.0)
 ## The game's limits on a map's size, on how far past its edge a sculpted seabed may reach, how far from
 ## the middle of the map scenery may stand (as TOO_FAR says), how far below the floor anything may be, on
 ## spawn points and patches, and on who may play.
-const HALF_WIDTHS := Vector2(10.0, 250.0)
-const CEILINGS := Vector2(5.0, 100.0)
+const HALF_WIDTHS := Vector2(10.0, 2000.0)
+const CEILINGS := Vector2(5.0, 1000.0)
 ## A play area box's width or depth, and its height, as the game's SIDES and HEIGHTS.
-const SIDES := Vector2(20.0, 500.0)
-const HEIGHTS := Vector2(5.0, 120.0)
+const SIDES := Vector2(20.0, 4000.0)
+const HEIGHTS := Vector2(5.0, 1000.0)
 const SCENERY_REACH := 4000.0
 const BELOW_THE_FLOOR := 12.0
 ## How far inside the map's reach Export moves a part it cuts that would stand just past it, in metres.
@@ -126,7 +132,7 @@ const MOST_SEABED_SIDE := 257
 ## The game's limits on how close a sculpted seabed's points are and how steep it is.
 const CLOSEST_SEABED_POINTS := 0.25
 const MOST_SEABED_SLOPE := 6.0
-const MOST_ANGLERS_AT_ONCE := 8
+const MOST_ANGLERS_AT_ONCE := 64
 ## The game grows food in at most two thirds of a map's patches, and in at least one.
 const FEWEST_PATCHES := 2
 ## The game's limits on wildlife.
@@ -323,7 +329,7 @@ class Scene:
 		if changes["cut"] > 0:
 			done.append("cut %d mesh%s far wider than a model into %d parts by where they lie" % [changes["cut"], "" if changes["cut"] == 1 else "es", changes["cut_parts"]])
 		if changes["split"] > 0:
-			done.append("split %d model%s with more than %d materials into parts" % [changes["split"], "" if changes["split"] == 1 else "s", MOST_MODEL_MATERIALS])
+			done.append("split %d model%s with more than %d materials into parts" % [changes["split"], "" if changes["split"] == 1 else "s", SPLIT_MATERIALS])
 		if changes["shrunk"] > 0:
 			var why := "the most the game draws" if picture_side == PICTURE_SIDE_DRAWN else "so that they all fit in what the game takes"
 			done.append("shrank the pictures of %d model%s to %d pixels across, %s" % [changes["shrunk"], "" if changes["shrunk"] == 1 else "s", picture_side, why])
@@ -858,7 +864,7 @@ static func model_name(path: String) -> String:
 static func file_problem(bytes: int) -> String:
 	if bytes <= MOST_FILE_BYTES:
 		return ""
-	return "The map's file comes to %.1f MB, and the most it can weigh is 2 MB. Remove some pieces." % (bytes / 1048576.0)
+	return "The map's file comes to %.1f MB, past the %d MB the game reads. No real map needs that much: the scene looks broken." % [bytes / 1048576.0, MOST_FILE_BYTES / 1048576]
 
 
 ## What's wrong with a map's name, in plain words, or nothing. The game would refuse the same.
@@ -1119,7 +1125,7 @@ static func read_rules(root: SmartFellasMap) -> Scene:
 		if team[1].is_empty():
 			scene.problems.append("This map has no %s spawn points: place some from the Map panel, or tick Spawns in Populate." % team[0])
 		elif team[1].size() > MOST_SPAWNS:
-			scene.problems.append("The map has %d %s spawn points. The limit is %d. Remove some." % [team[1].size(), team[0], MOST_SPAWNS])
+			scene.problems.append("The map has %d %s spawn points, past the %d the game takes." % [team[1].size(), team[0], MOST_SPAWNS])
 	_check_patches(scene)
 	_check_triggers(root, scene)
 	_check_wildlife(root, scene)
@@ -1261,7 +1267,7 @@ static func _check_patches(scene: Scene) -> void:
 	elif scene.patches.size() < FEWEST_PATCHES:
 		scene.problems.append("The map has one food patch. Food only grows in two thirds of them at once, so it needs at least %d." % FEWEST_PATCHES)
 	elif scene.patches.size() > MOST_PATCHES:
-		scene.problems.append("The map has %d food patches. The limit is %d. Remove some." % [scene.patches.size(), MOST_PATCHES])
+		scene.problems.append("The map has %d food patches, past the %d the game takes." % [scene.patches.size(), MOST_PATCHES])
 
 
 static func _check_wildlife(root: SmartFellasMap, scene: Scene) -> void:
@@ -1277,7 +1283,7 @@ static func _check_wildlife(root: SmartFellasMap, scene: Scene) -> void:
 		counted.append([haunt[3], scene.haunts[haunt[0]].size(), MOST_HAUNTS])
 	for row in counted:
 		if row[1] > row[2]:
-			scene.problems.append("The map has %d %s. The limit is %d. Remove some." % [row[1], row[0], row[2]])
+			scene.problems.append("The map has %d %s, past the %d the game takes." % [row[1], row[0], row[2]])
 	if scene.goblin_route.size() == 1:
 		scene.problem_on(scene.goblin_route[0]["node"], "The goblin shark's route has one point. It needs at least %d, or none to take the shark's." % FEWEST_ROUTE_POINTS)
 	if not root.goblin_shark and not scene.goblin_route.is_empty():
@@ -1811,13 +1817,13 @@ static func _check_model_totals(scene: Scene) -> void:
 	if files > MOST_ENTRIES:
 		scene.problems.append("The map's package would hold %d files, past the %d the game reads. No real map needs that many." % [files, MOST_ENTRIES])
 	if scene.looks.size() > MOST_MAP_MATERIALS:
-		scene.problems.append("The map's own models use %d different materials between them, and the game takes %d. Remove some models of your own." % [scene.looks.size(), MOST_MAP_MATERIALS])
+		scene.problems.append("The map's own models use %d different materials between them, past the %d the game can number. No real map needs that many: the scene looks broken." % [scene.looks.size(), MOST_MAP_MATERIALS])
 	if totals["triangles"] > MOST_MAP_TRIANGLES:
 		scene.problems.append("The map's own models have %d triangles between them, past the %d the game can hold in memory." % [totals["triangles"], MOST_MAP_TRIANGLES])
 	if totals["corners"] > MOST_MAP_CORNERS:
 		scene.problems.append("The map's own models have %d corners between them, past the %d the game can hold in memory." % [totals["corners"], MOST_MAP_CORNERS])
-	if totals["picture_pixels"] > picture_pixels_taken:
-		scene.problems.append("The map's own models' pictures hold %d million pixels between them, even made %d pixels across, and the game takes %d million. Share pictures between models, or remove some." % [totals["picture_pixels"] / 1000000, scene.picture_side, picture_pixels_taken / 1000000])
+	# Pictures still past picture_pixels_taken at their smallest here are fine: the game draws them smaller
+	# again as it loads the map, rather than refusing it (#299).
 	if totals["picture_bytes"] > MOST_MAP_PICTURE_BYTES:
 		scene.problems.append("The map's own models' pictures come to %.1f MB between them, even made %d pixels across, past the %d MB the game can hold in memory." % [totals["picture_bytes"] / 1048576.0, scene.picture_side, MOST_MAP_PICTURE_BYTES / 1048576])
 
@@ -2388,7 +2394,7 @@ static func _cut_arrays(arrays: Array, corners: PackedInt32Array, place: Transfo
 
 
 ## The .glbs the game takes made of `node`, as built_glb makes one, as {"glbs", "middle"}: one, or for a model
-## with more materials than the game takes in one, several, each of at most MOST_MODEL_MATERIALS of them,
+## with more than SPLIT_MATERIALS materials, several, each of at most SPLIT_MATERIALS of them,
 ## which together draw the whole model. A model whose meshes lie far from its node, as one imported with
 ## its place built into its mesh has, is made about its own middle, and "middle" says where that was under
 ## the node; it's nothing otherwise. "glbs" is empty if Godot can't make them.
@@ -2405,7 +2411,7 @@ static func split_glbs(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, ch
 			child.free()
 	var middle := _far_middle(copy)
 	result["middle"] = middle
-	# Each group of surfaces sharing at most MOST_MODEL_MATERIALS materials, as {"materials", "surfaces"},
+	# Each group of surfaces sharing at most SPLIT_MATERIALS materials, as {"materials", "surfaces"},
 	# each surface as [part, surface number].
 	var groups: Array[Dictionary] = []
 	for part in meshes_in(copy):
@@ -2419,7 +2425,7 @@ static func split_glbs(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, ch
 					break
 			if into.is_empty():
 				for group in groups:
-					if group["materials"].size() < MOST_MODEL_MATERIALS:
+					if group["materials"].size() < SPLIT_MATERIALS:
 						into = group
 						break
 			if into.is_empty():
@@ -2564,7 +2570,7 @@ static func _read_trigger(zone: Node3D, scene: Scene) -> void:
 ## bigger than it, as the game's check_triggers.
 static func _check_triggers(root: SmartFellasMap, scene: Scene) -> void:
 	if scene.triggers.size() > MOST_TRIGGERS:
-		scene.problems.append("The map has %d trigger zones, and the most it can have is %d. Remove some." % [scene.triggers.size(), MOST_TRIGGERS])
+		scene.problems.append("The map has %d trigger zones, past the %d the game takes." % [scene.triggers.size(), MOST_TRIGGERS])
 		return
 	var box := root.area_box()
 	var widest := maxf(maxf(box.size.x, box.size.z) * 0.5, root.area_ceiling() - root.area_base()) * 2.0

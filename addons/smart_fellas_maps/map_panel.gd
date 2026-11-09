@@ -10,6 +10,8 @@ const MarkerKinds := preload("marker_kinds.gd")
 const PlayArea := preload("play_area.gd")
 const PopulateGroups := preload("populate_groups.gd")
 const Recipes := preload("recipes.gd")
+## What the Performance part says before the open map has been graded.
+const NOT_GRADED := "Not graded yet. Press Grade it, or Export Map or Test Map, and the game grades it."
 const SeabedTool := preload("seabed_tool.gd")
 const UpdateBanner := preload("update_banner.gd")
 const UpdateBox := preload("update_box.gd")
@@ -21,6 +23,8 @@ signal sculpting_asked(mode: int)
 signal flatten_asked
 signal sculpting_settings_changed(wide: float, strength: float)
 signal play_area_toggled(on: bool)
+## The map maker pressed Grade it: the plugin exports the map somewhere of its own and has the game grade it.
+signal grade_asked
 
 const MINIMUM_WIDTH := 200.0
 const PROBLEM_COLOUR := Color(1.0, 0.45, 0.4)
@@ -52,7 +56,7 @@ const SWITCHES := [
 	["cave_sounds", "Cave sounds"],
 ]
 const LIFE_NUMBERS := [
-	["anglers_at_once", "Anglerfish at once", Vector2(1.0, 8.0), 1.0],
+	["anglers_at_once", "Anglerfish at once", Vector2(1.0, MapExporter.MOST_ANGLERS_AT_ONCE), 1.0],
 ]
 const SCULPT_MODES := [
 	[SeabedTool.Mode.RAISE, "Raise"],
@@ -107,6 +111,10 @@ var _notes: ScrollContainer
 var _show_area: CheckBox
 var _area_shown := true
 var _fit_said: Label
+var _grade_said: Label
+var _grade_button: Button
+## The map the grade shown is for, so another map opened doesn't show it. Untyped, as it may have been freed.
+var _graded: Variant = null
 ## Whether show_map left the map unread while the panel's tab was hidden behind Paint or Water. Reading it
 ## takes a tenth of a second or more on a map of thousands of pieces, which every map's opening paid (#291).
 var _unread := false
@@ -150,6 +158,7 @@ func _ready() -> void:
 	# under the scrolling part, it took most of a dock's height and hid the rest (#214).
 	column.add_child(HSeparator.new())
 	_counts = _label(column, "")
+	_add_performance(column)
 	_add_version(column)
 	# What the game would refuse stays in sight under the scrolling part, as it's typed, but takes at
 	# most NOTES_SHARE of the panel: past that it scrolls on its own.
@@ -400,6 +409,40 @@ func _say_populated(result: Dictionary) -> void:
 	show_map()
 
 
+## The map's performance grade, as the game works it out: only after Export, Test Map or Grade it, never as
+## the map changes, as it takes the game a moment (#287, #299).
+func _add_performance(column: Control) -> void:
+	_add_heading(column, "Performance")
+	_label(column, "How heavy the map is to run, as the game grades it: Light, Medium, Heavy or Very heavy. It never stops a map: it shows on its Workshop page and in the lobby, so players know what to expect.")
+	_grade_said = _label(column, NOT_GRADED)
+	_grade_button = Button.new()
+	_grade_button.text = "Grade it"
+	_grade_button.tooltip_text = "Exports the map to a folder of the add-on's own and asks the game to grade it. Your exported map in the game is left as it was."
+	_grade_button.pressed.connect(func() -> void:
+		_grade_button.disabled = true
+		_grade_said.text = "Grading..."
+		grade_asked.emit())
+	column.add_child(_grade_button)
+
+
+## Shows the grade in `result`, from Export, Test Map or Grade it on the open map, or why there's none.
+func show_grade(result: Dictionary) -> void:
+	_grade_button.disabled = false
+	_graded = _map()
+	var tester: GDScript = load("res://addons/smart_fellas_maps/map_tester.gd")
+	var graded: String = tester.grade_words(result)
+	if not graded.is_empty():
+		_grade_said.text = graded
+		return
+	match result.get("state"):
+		tester.State.FINE:
+			_grade_said.text = "Your Smart Fellas is too old to grade maps. Update it in Steam (on the beta branch, if you play the beta), then press Grade it."
+		tester.State.NO_GAME, tester.State.CANT_CHECK, tester.State.NO_MAPS_FOLDER:
+			_grade_said.text = "The game grades maps, and it couldn't be asked. Export Map says why."
+		_:
+			_grade_said.text = "Not graded: the game can't take the map yet. Export Map says why."
+
+
 ## Which add-on this is, and updating it.
 func _add_version(column: Control) -> void:
 	_add_heading(column, "This add-on")
@@ -558,6 +601,8 @@ func show_map() -> void:
 	_unread = not _tab_shown()
 	if _unread:
 		return
+	if _graded == null or not is_instance_valid(_graded) or _graded != map:
+		_grade_said.text = NOT_GRADED
 	_showing = true
 	if _name_edit.text != map.map_name:
 		_name_edit.text = map.map_name

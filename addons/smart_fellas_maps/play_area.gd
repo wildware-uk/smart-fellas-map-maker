@@ -13,6 +13,10 @@ const SurfaceFinder := preload("surface_finder.gd")
 
 ## How many rays a side Fit to map casts down over the box, on a map with no seabed, to find its lowest ground.
 const GROUND_RAYS := 16
+## How far under the lowest marker Fit to map looks for the ground of a map with no seabed, in metres. Fit to
+## map is for where players swim, so it looks as far down as it did before #299, when a play area was at most
+## 120 m tall, and not as far as the far taller ones the game takes now.
+const LOOK_UNDER := 120.0
 ## How far Fit to map leaves the sides and floor past the outermost and lowest things placed, and the ceiling
 ## over the highest, in metres: room for a diver to swim over the tallest rock.
 const FIT_MARGIN := 2.0
@@ -250,7 +254,7 @@ static func _lowest_piece_ground(map: SmartFellasMap, flat: Rect2, top: float, l
 		for column in GROUND_RAYS:
 			var x := lerpf(flat.position.x, flat.end.x, (column + 0.5) / GROUND_RAYS)
 			var z := lerpf(flat.position.y, flat.end.y, (row + 0.5) / GROUND_RAYS)
-			lowest = minf(lowest, finder.lowest_top(Vector3(x, top + FIT_HEADROOM, z), Vector3(x, low - MapExporter.HEIGHTS.y, z)))
+			lowest = minf(lowest, finder.lowest_top(Vector3(x, top + FIT_HEADROOM, z), Vector3(x, low - LOOK_UNDER, z)))
 	return lowest
 
 
