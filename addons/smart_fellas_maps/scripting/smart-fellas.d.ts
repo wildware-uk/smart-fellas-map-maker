@@ -43,9 +43,8 @@
 //
 // mode.json may also say, each optional:
 // - "minDivers", "minOctopuses": the fewest players on each team a round may start with (0);
-// - "teamLines": { "octopus": "...", "diver": "...", "shark": "..." } ("shark" only for a mode
-//   that opens the sharks), the lines under each team's name in the
-//   lobby, and "startLines" the same shape, the lines under the banner as the hunt starts (1 to 60
+// - "teamLines": { "octopus": "...", "diver": "..." }, the lines under each team's name in the
+//   lobby (a team the mode adds says its own, in game.registerTeam), and "startLines" the same shape, the lines under the banner as the hunt starts (1 to 60
 //   characters each);
 // - "look": "catches" or "turns" for the game's own octopuses-left count and results (Classic's,
 //   Infected's), or left out for the mode's own scoreboard and banner;
@@ -61,11 +60,28 @@ interface Point {
 }
 
 /**
- * A side in a match: the octopuses (Smart Fellas), the divers (Fart Smellas) or the sharks, players
- * who each drive a reef shark. The sharks are closed in every mode until one opens them
- * (game.openTeam("shark")).
+ * A side in a match: the octopuses (Smart Fellas), the divers (Fart Smellas), or a team the game
+ * mode added with game.registerTeam, by the id it gave it.
  */
-type Team = "octopus" | "diver" | "shark";
+type Team = "octopus" | "diver" | (string & {});
+
+/** A team a game mode adds of its own (game.registerTeam). */
+interface TeamSpec {
+  /** What players read, 1 to 24 characters. */
+  name: string;
+  /** Its colour, "#rrggbb". */
+  colour: string;
+  /** The creature its players drive, with their own keys and mouse; a bot's swims on its own. */
+  body: "shark";
+  /** The most players it may have, people and bots, 1 to 32. */
+  most: number;
+  /** Whose start points it comes in at: "octopus" (all over the map, the default) or "diver". */
+  spawns?: "octopus" | "diver";
+  /** The line under its name in the lobby, at most 60 characters. */
+  line?: string;
+  /** The line under the banner its players see as the hunt starts, at most 60 characters. */
+  startLine?: string;
+}
 /** A tool a diver may carry (game.loadout). */
 type Tool = "spear" | "net" | "sensor" | "torch";
 
@@ -383,8 +399,16 @@ interface Game {
    * (for game modes).
    */
   closeTeam(team: Team, why: string): void;
-  /** Opens a team closed by closeTeam again, or the sharks, closed until a mode opens them (for game modes). */
+  /** Opens a team closed by closeTeam again (for game modes). */
   openTeam(team: Team): void;
+  /**
+   * Adds a team of the mode's own, or changes one it added: `id` (1 to 16 lower-case letters) is
+   * what every call that takes a team calls it from then on. Its players each drive a creature of
+   * `team.body`; bots fill it with setBots, and people join it in the lobby like any team. A mode may
+   * add 2. Call it from onMatchStart: a mode being left takes its teams with it, and anyone on one
+   * goes back to the octopuses or the divers (for game modes).
+   */
+  registerTeam(id: string, team: TeamSpec): void;
   /**
    * The mode alone decides how many bots a team has, with setBots: the lobby hides the host's bot
    * count for that team and says the mode sets it (for game modes).
