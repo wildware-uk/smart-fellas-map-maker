@@ -76,7 +76,7 @@ type Catch = "jaws" | "net";
 /** Food a player can eat. */
 type FoodKind = "crab" | "clam" | "shrimp" | "wrasse" | "lobster";
 
-/** The creatures a script can find with game.creatures(). */
+/** The creatures and food a script can find with game.creatures(), spawn and remove. */
 type CreatureKind =
   | "shark"
   | "eel"
@@ -86,9 +86,6 @@ type CreatureKind =
   | "crab"
   | "clam"
   | "shrimp";
-
-/** The creatures and food a script can spawn and remove (the map's fish can't be, yet). */
-type SpawnKind = "shark" | "eel" | "groper" | "crab" | "clam" | "shrimp";
 
 /** The sounds a map can play. game.sounds() lists them too. */
 type SoundName =
@@ -283,7 +280,7 @@ interface Creature {
   readonly alive: boolean;
   /** Where it is, or null once gone. */
   readonly position: Point | null;
-  /** Takes it out of the match. The map's fish (flounder, lionfish) can't be removed yet. */
+  /** Takes it out of the match, on every player's screen. */
   remove(): void;
 }
 
@@ -330,12 +327,14 @@ interface Game {
    * - food grows on the free food spot nearest the point that suits it, if one is within 10 m
    *   (crabs on sand or rock, shrimp on sand, clams on rock), and doesn't grow back once eaten;
    * - a shark joins its loop round the map at the point nearest yours;
-   * - an eel or a groper goes beside the rock nearest the point.
+   * - an eel or a groper goes beside the rock nearest the point;
+   * - a lionfish hovers at the point, lifted clear of any rock, and a flounder lies on the seabed
+   *   under it, if the seabed is within 50 m. Every player sees them, players who join later too.
    * Sharks, eels and gropers come only while a round is being played. If the game finds no place,
    * the handle reads as gone from the next tick. A script may have at most 1 shark, 4 eels, 4
-   * gropers and 256 of each food it spawned alive at once; asking for more throws.
+   * gropers, 256 of each food and 256 fish it spawned alive at once; asking for more throws.
    */
-  spawn(kind: SpawnKind, x: number, y: number, z: number): Creature;
+  spawn(kind: CreatureKind, x: number, y: number, z: number): Creature;
 
   /** Shows everyone a message from the map: 1 to 120 characters, a few a second at most. */
   say(text: string): void;
