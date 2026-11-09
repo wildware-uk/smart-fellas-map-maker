@@ -141,13 +141,14 @@ func carry(node: Node3D, was: Transform3D, now: Transform3D) -> int:
 		var down := place.basis.y.normalized()
 		var on := _stands_on(shapes, place.origin, down, lift + MARKER_REACH) or _stands_on(shapes, place.origin, Vector3.UP, lift + MARKER_REACH)
 		# An upright marker dropped on a wall stands out from it sideways, not over it. One beside the piece
-		# with anything else under it, such as the floor at a rock's foot, stands on that and stays. The piece
-		# itself is left out of that look, as it has moved already.
+		# with anything else under it, such as the floor at a rock's foot, stands on that and stays, as does
+		# one tucked under another rock's ledge, where the look starts inside that rock. The piece itself is
+		# left out of that look, as it has moved already.
 		if not on and box.has_point(place.origin) and _beside(shapes, place.origin, lift + MARKER_REACH):
 			if finder == null:
 				finder = SurfaceFinder.new(map)
 			var above := place.origin + Vector3.UP * FOOT_REACH
-			on = finder.find(above, place.origin + Vector3.DOWN * (lift + MARKER_REACH), node).is_empty()
+			on = not finder.meets(above, place.origin + Vector3.DOWN * (lift + MARKER_REACH), node)
 		if box.has_point(place.origin) and on:
 			nodes.append(marker)
 			# A marker keeps its own up: spawn points and fish stand upright wherever they are.

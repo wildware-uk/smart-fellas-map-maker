@@ -237,6 +237,12 @@ func find(from: Vector3, to: Vector3, ignoring: Node3D = null) -> Dictionary:
 	return hit
 
 
+## Whether the ray from `from` to `to` meets anything but `ignoring`, as find says it, or starts inside a
+## piece: what's under a ledge, or in a rock, is on that.
+func meets(from: Vector3, to: Vector3, ignoring: Node3D = null) -> bool:
+	return not _nearest(from, to, ignoring).is_empty()
+
+
 ## The lowest height at which the ray from `from` to `to` meets the outside of a surface, passing on through
 ## each one it meets, or INF if it meets none: straight down, the lowest top under everything over it.
 func lowest_top(from: Vector3, to: Vector3) -> float:
