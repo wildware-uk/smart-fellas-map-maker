@@ -14,6 +14,11 @@ const MarkerTool := preload("marker_tool.gd")
 const SeabedTool := preload("seabed_tool.gd")
 const ShaderGlobals := preload("water/shader_globals.gd")
 const PaintPanel := preload("paint_panel.gd")
+const PoseGizmos := preload("pose_gizmos.gd")
+const PoseInspector := preload("pose_inspector.gd")
+const PoseLink := preload("pose_link.gd")
+const PosePanel := preload("pose_panel.gd")
+const OctopusPose := preload("octopus_pose.gd")
 const PlayAreaGizmos := preload("play_area_gizmos.gd")
 const ZoneGizmos := preload("zone_gizmos.gd")
 const TriggerGizmos := preload("trigger_gizmos.gd")
@@ -66,6 +71,10 @@ var _map_panel: Control
 var _pieces_dock: EditorDock
 var _paint_dock: EditorDock
 var _map_dock: EditorDock
+var _pose_panel: Control
+var _pose_dock: EditorDock
+var _pose_gizmos: PoseGizmos
+var _pose_inspector: PoseInspector
 var _markers: MarkerTool
 var _marker_gizmos: EditorNode3DGizmoPlugin
 var _play_area: PlayAreaGizmos
@@ -130,12 +139,18 @@ func _enter_tree() -> void:
 	_map_dock = _dock_of(_map_panel, "Map", TOOLS_SLOT, TOOLS_LAYOUT % "Map")
 	_paint_dock = _dock_of(_paint_panel, "Paint", TOOLS_SLOT, TOOLS_LAYOUT % "Paint")
 	_water_dock = _dock_of(_water_panel, "Water", TOOLS_SLOT, TOOLS_LAYOUT % "Water")
+	_pose_panel = PosePanel.new()
+	_pose_panel.undo = get_undo_redo()
+	_pose_panel.placing_asked.connect(_on_placing_asked)
+	_pose_dock = _dock_of(_pose_panel, "Poses", TOOLS_SLOT, TOOLS_LAYOUT % "Poses")
 	_markers = MarkerTool.new()
 	_markers.history = get_undo_redo()
 	_markers.surface_under = _tool.surface_under
 	_markers.view_changed.connect(update_overlays)
 	_markers.said.connect(_say_about_markers)
-	_markers.stopped.connect(func() -> void: _map_panel.show_placing(""))
+	_markers.stopped.connect(func() -> void:
+		_map_panel.show_placing("")
+		_pose_panel.show_placing(false))
 	_markers.zone_dropped.connect(_select_alone)
 	_sculptor = SeabedTool.new()
 	_sculptor.history = get_undo_redo()
@@ -165,6 +180,12 @@ func _enter_tree() -> void:
 	_trigger_gizmos = TriggerGizmos.new()
 	_trigger_gizmos.undo = get_undo_redo()
 	add_node_3d_gizmo_plugin(_trigger_gizmos)
+	_pose_gizmos = PoseGizmos.new()
+	_pose_gizmos.undo = get_undo_redo()
+	add_node_3d_gizmo_plugin(_pose_gizmos)
+	_pose_inspector = PoseInspector.new()
+	_pose_inspector.undo = get_undo_redo()
+	add_inspector_plugin(_pose_inspector)
 	_map_panel.gathered = _play_area.gathered
 	_map_panel.show_play_area_shown(_play_area.shown)
 	_map_panel.play_area_toggled.connect(_on_play_area_toggled)
@@ -218,6 +239,8 @@ func _exit_tree() -> void:
 	_water_button.queue_free()
 	remove_dock(_water_dock)
 	_water_dock.queue_free()
+	remove_dock(_pose_dock)
+	_pose_dock.queue_free()
 	remove_dock(_paint_dock)
 	_paint_dock.queue_free()
 	remove_dock(_map_dock)
@@ -226,6 +249,9 @@ func _exit_tree() -> void:
 	remove_node_3d_gizmo_plugin(_play_area)
 	remove_node_3d_gizmo_plugin(_zone_gizmos)
 	remove_node_3d_gizmo_plugin(_trigger_gizmos)
+	remove_node_3d_gizmo_plugin(_pose_gizmos)
+	remove_inspector_plugin(_pose_inspector)
+	PoseLink.stop()
 	remove_dock(_pieces_dock)
 	_pieces_dock.queue_free()
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_BOTTOM, _cost_bar)
@@ -403,6 +429,7 @@ func _on_placing_asked(kind: String) -> void:
 	EditorInterface.set_main_screen_editor("3D")
 	EditorInterface.get_selection().clear()
 	_map_panel.show_placing(kind)
+	_pose_panel.show_placing(kind == OctopusPose.PLACING)
 	_markers.start(kind)
 
 
@@ -475,6 +502,10 @@ func _on_selection_changed() -> void:
 	var selected := EditorInterface.get_selection().get_top_selected_nodes()
 	_carrier.watch(selected[0] as Node3D if selected.size() == 1 else null)
 	_map_panel.show_selected(selected[0] if selected.size() == 1 else null)
+	var pose: Node3D = selected[0] as Node3D if selected.size() == 1 and selected[0].get_script() == OctopusPose else null
+	_pose_panel.show_pose(pose)
+	if pose != null:
+		_pose_dock.make_visible()
 
 
 func _watch_map(map: SmartFellasMap) -> void:

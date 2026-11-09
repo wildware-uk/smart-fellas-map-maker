@@ -24,6 +24,8 @@ It's a Godot project with our add-on already switched on. The add-on gives Godot
 
 **Export Map** writes your map straight into Smart Fellas: it shows in the game under **Workshop > Maps > My maps**, where you name it, pick its picture and publish it. **Export to Folder...** writes it anywhere you choose, to share it by hand.
 
+**Octopus poses** of your own: in the **Poses** panel, press **Add: Octopus pose**, click where it goes, and shape it with the dials or by dragging its arms' tips. Then select a piece and tick the pose under **Octopus poses** in the Inspector: in the game, an octopus next to that piece can take the pose from its near wheel (Q). The octopus is drawn by the game itself, so this needs Smart Fellas installed too.
+
 ## Update it
 
 The **Map** panel says which version you have, under **This add-on**, at the bottom. Once a day, when Godot opens, it asks GitHub whether a newer one is out. If one is, a banner at the top of the **Map** panel says "Update available", with **Update** and **What's new**. Press **Update**, then **Restart Godot**. Only the add-on's own folder (`addons/smart_fellas_maps`) changes: your maps and models stay as they are. If a new version's water needs a setting your `project.godot` lacks, the add-on adds it there itself when Godot starts. Each download is checked against the SHA-256 published with its release, and refused if it doesn't match.

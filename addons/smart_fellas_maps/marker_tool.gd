@@ -10,6 +10,7 @@ const MapExporter := preload("map_exporter.gd")
 const MarkerKinds := preload("marker_kinds.gd")
 const Zone := preload("populate_zone.gd")
 const TriggerZone := preload("trigger_zone.gd")
+const OctopusPose := preload("octopus_pose.gd")
 
 signal view_changed
 signal said(words: String)
@@ -35,6 +36,10 @@ var _last_dropped_at := Vector3.INF
 var _dragging := false
 ## What this click or drag has dropped so far, in the map already, and made one step of undo when it ends.
 var _dropped: Array[Node3D] = []
+## Whether the left button's coming up is still to be kept from Godot, after a click that dropped a zone or
+## a pose and stopped the tool: Godot selects what's under the mouse when the button comes up, and would
+## select the ground in place of what was just dropped.
+var _eat_release := false
 
 
 func start(new_kind: String) -> void:
@@ -56,6 +61,9 @@ func stop() -> void:
 
 ## Takes one of the 3D view's input events. Gives back whether it used it, so that Godot doesn't.
 func handle_input(camera: Camera3D, event: InputEvent) -> bool:
+	if _eat_release and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		_eat_release = false
+		return true
 	if kind.is_empty() or map == null:
 		return false
 	if event is InputEventKey:
@@ -89,6 +97,7 @@ func handle_input(camera: Camera3D, event: InputEvent) -> bool:
 				if _drops_zone() and not _dropped.is_empty():
 					var zone := _dropped[0]
 					stop()
+					_eat_release = true
 					zone_dropped.emit(zone)
 			return true
 		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
@@ -110,6 +119,9 @@ func _drop_at(hit: Dictionary) -> void:
 	var dropped: Node3D
 	if kind == TriggerZone.PLACING:
 		dropped = TriggerZone.new_zone(map.global_transform.affine_inverse() * at)
+	elif kind == OctopusPose.PLACING:
+		var inverse := map.global_transform.affine_inverse()
+		dropped = OctopusPose.new_pose(inverse * at, inverse.basis * (hit["normal"] as Vector3))
 	elif _zone_kind() >= 0:
 		dropped = Zone.new_zone(map, _zone_kind(), map.global_transform.affine_inverse() * at)
 	else:
@@ -127,19 +139,23 @@ func _zone_kind() -> int:
 
 ## Whether what's being dropped is a zone, of Populate's or a trigger zone, which goes one at a time.
 func _drops_zone() -> bool:
-	return kind == TriggerZone.PLACING or _zone_kind() >= 0
+	return kind == TriggerZone.PLACING or kind == OctopusPose.PLACING or _zone_kind() >= 0
 
 
 ## What a person calls what's being dropped, and the colour it's shown in.
 func _words() -> String:
 	if kind == TriggerZone.PLACING:
 		return TriggerZone.WORDS
+	if kind == OctopusPose.PLACING:
+		return OctopusPose.WORDS
 	return Zone.KINDS[_zone_kind()]["words"] if _zone_kind() >= 0 else MarkerKinds.KINDS[kind]["words"]
 
 
 func _colour() -> Color:
 	if kind == TriggerZone.PLACING:
 		return TriggerZone.COLOUR
+	if kind == OctopusPose.PLACING:
+		return OctopusPose.COLOUR
 	return Zone.KINDS[_zone_kind()]["colour"] if _zone_kind() >= 0 else MarkerKinds.KINDS[kind]["colour"]
 
 
@@ -212,6 +228,8 @@ func _draw_zones(overlay: Control, camera: Camera3D) -> void:
 		_draw_words_at(overlay, camera, zone.global_position, Zone.KINDS[zone.kind]["words"], Zone.KINDS[zone.kind]["colour"])
 	for zone in TriggerZone.nodes_in(map):
 		_draw_words_at(overlay, camera, zone.global_position, String(zone.name), TriggerZone.COLOUR)
+	for pose in OctopusPose.nodes_in(map):
+		_draw_words_at(overlay, camera, pose.global_transform * Vector3(0.0, 0.7, 0.0), String(pose.name), OctopusPose.COLOUR)
 
 
 func _draw_words_at(overlay: Control, camera: Camera3D, at: Vector3, words: String, colour: Color) -> void:

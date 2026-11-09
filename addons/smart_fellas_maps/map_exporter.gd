@@ -11,6 +11,7 @@ const NameLetters := preload("name_letters.gd")
 const SeabedGrid := preload("seabed_grid.gd")
 const WaterLook := preload("water/water_look.gd")
 const TriggerZone := preload("trigger_zone.gd")
+const OctopusPose := preload("octopus_pose.gd")
 
 const KIT_FOLDER := Kit.FOLDER
 const FORMAT := 2
@@ -26,6 +27,8 @@ const BOX_FORMAT := 6
 ## The game's GRID_MIDDLE_FORMAT, for a box map whose sculpted grid sits round a middle of its own, and
 ## otherwise as BOX_FORMAT.
 const GRID_MIDDLE_FORMAT := 7
+## The game's POSES_FORMAT, for a map with octopus poses of its own, which must have a play area box.
+const POSES_FORMAT := 8
 ## Where a map's own models go in its package.
 const ASSETS_FOLDER := "assets"
 ## The end of a map package's file name: Smart Fellas Map.
@@ -216,6 +219,8 @@ class Scene:
 	var haunts := {"wrasse": [], "stingrays": [], "eels": [], "gropers": []}
 	## The trigger zones for the map's script, as {"name", "at", "reach", "node"}.
 	var triggers: Array[Dictionary] = []
+	## The map's own octopus poses, as their nodes, in the order map.ron has them.
+	var poses: Array[Node3D] = []
 	## The map's own models, by their name in the package's assets/, as their file in this project.
 	var models := {}
 	## The pictures those models keep beside themselves, by their name in assets/, as their file here.
@@ -269,7 +274,7 @@ class Scene:
 		"Piece": [], "Octopus spawn": [], "Diver spawn": [], "Food patch": [], "Food spot": [], "Fish": [],
 		"Anglerfish spot": [], "Lantern fish school": [], "Jellyfish group": [], "Goblin shark route point": [],
 		"Wrasse spot": [], "Stingray stop": [], "Eel hole": [], "Groper hole": [],
-		"Trigger zone": [],
+		"Trigger zone": [], "Pose": [],
 	}
 
 	func jelly_count() -> int:
@@ -1107,6 +1112,7 @@ static func _read_scene_with(root: SmartFellasMap, picture_side: int) -> Scene:
 	_read_painted(root, scene)
 	_check_placed_triangles(scene)
 	_check_piece_names(scene)
+	_check_poses(root, scene)
 	scene.finder = load("res://addons/smart_fellas_maps/surface_finder.gd").new(root)
 	_warn_of_spawns_over_nothing(root, scene)
 	_warn_of_food_over_nothing(root, scene)
@@ -2557,6 +2563,10 @@ static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "", na
 		piece["name"] = String(node.name)
 		piece["switch"] = is_switch
 		piece["node"] = node
+	var offers := OctopusPose.offered_by(node)
+	if not offers.is_empty():
+		piece["poses"] = offers
+		piece["node"] = node
 	scene.pieces.append(piece)
 	scene.sources["Piece"].append(node)
 
@@ -2616,6 +2626,108 @@ static func _check_triggers(root: SmartFellasMap, scene: Scene) -> void:
 			scene.problem_on(zone, "%s has its middle at (%.1f, %.1f, %.1f), outside the map's play area. %s" % [zone.name, at.x, at.y, at.z, area_words(root)])
 		elif reach.x <= 0.0 or reach.y <= 0.0 or reach.z <= 0.0 or reach.x > widest or reach.y > widest or reach.z > widest:
 			scene.problem_on(zone, "%s reaches (%.1f, %.1f, %.1f) m from its middle. It must reach more than 0 and at most %s m each way, as wide as the map: set its scale back to 1 and size it with the dots on its sides." % [zone.name, reach.x, reach.y, reach.z, widest])
+
+
+## Reads the map's own octopus poses, and checks them and what its pieces offer as the game's checker
+## does: at most MOST_POSES, each a name of its own of at most MOST_NAME_LETTERS, every pose a piece offers
+## one of them, and at most MOST_A_PIECE on a piece. A map with poses needs a play area box.
+static func _check_poses(root: SmartFellasMap, scene: Scene) -> void:
+	scene.poses = OctopusPose.nodes_in(root)
+	scene.sources["Pose"] = scene.poses.duplicate()
+	if scene.poses.is_empty() and not _offers_any(scene):
+		return
+	if root.play_area() == null:
+		scene.problems.append("This map has octopus poses, and only a map with a play area box can have them. This older map has none: add a PlayArea from a new bare map (Paint panel), then export again.")
+	if scene.poses.size() > OctopusPose.MOST_POSES:
+		scene.problems.append("The map has %d octopus poses, past the %d the game takes." % [scene.poses.size(), OctopusPose.MOST_POSES])
+		return
+	var seen := {}
+	for pose in scene.poses:
+		var pose_name := String(pose.name)
+		if pose_name.strip_edges().is_empty():
+			scene.problem_on(pose, "An octopus pose has no name. Rename it in the Scene panel.")
+		elif pose_name.length() > OctopusPose.MOST_NAME_LETTERS:
+			scene.problem_on(pose, "The octopus pose %s has a name of %d letters, and the most is %d. Rename it in the Scene panel." % [pose_name, pose_name.length(), OctopusPose.MOST_NAME_LETTERS])
+		elif seen.has(pose_name.to_lower()):
+			scene.problem_on(pose, "Two octopus poses are called %s. Rename one in the Scene panel." % pose_name)
+		seen[pose_name.to_lower()] = true
+		var whole: Dictionary = pose.file_pose()
+		var arms: Variant = whole["arms"]
+		var plain: bool = arms is Array and arms.size() == OctopusPose.ARMS
+		for key: String in POSE_WORDS:
+			plain = plain and whole[key] in POSE_WORDS[key]
+		if not plain:
+			scene.problem_on(pose, "The octopus pose %s is broken. Select it and press Back to rest in the Poses panel, or delete it." % pose_name)
+	var known := {}
+	for pose in scene.poses:
+		known[String(pose.name)] = true
+	for piece in scene.pieces:
+		if not piece.has("poses"):
+			continue
+		var node: Node = piece["node"]
+		var offers: PackedStringArray = piece["poses"]
+		if offers.size() > OctopusPose.MOST_A_PIECE:
+			scene.problem_on(node, "%s offers %d octopus poses, and a piece offers at most %d. Untick some under Octopus poses in its Inspector." % [node.name, offers.size(), OctopusPose.MOST_A_PIECE])
+		for pose_name in offers:
+			if not known.has(pose_name):
+				scene.problem_on(node, "%s offers the octopus pose %s, and the map has no shown pose called that. Untick it under Octopus poses in its Inspector, or show or add the pose." % [node.name, pose_name])
+
+
+## The words a pose may say for how it sits and shows, as the game's Sits, Suckers, Eyes and Lit.
+const POSE_WORDS := {
+	"sits": ["Floor", "Wall", "Ceiling", "Buried"],
+	"suckers": ["Hidden", "Shown"],
+	"eyes": ["Covered", "Bare"],
+	"lit": ["OwnShape", "AsGround"],
+}
+
+
+## Whether any piece offers one of the map's poses.
+static func _offers_any(scene: Scene) -> bool:
+	for piece in scene.pieces:
+		if piece.has("poses"):
+			return true
+	return false
+
+
+## `words` as a string in map.ron, with what would end it early made safe.
+static func _quoted(words: String) -> String:
+	return "\"%s\"" % words.replace("\\", "\\\\").replace("\"", "\\\"")
+
+
+## A number of a pose as map.ron writes it, or nothing if the pose leaves it out or it isn't a number.
+static func _pose_number(part: Dictionary, key: String) -> String:
+	var value: Variant = part.get(key)
+	return _number(float(value)) if value is float or value is int else ""
+
+
+## A part of a pose, its arm or its body, as a map.ron tuple of the numbers it sets.
+static func _pose_part(part: Dictionary) -> String:
+	var keys := part.keys()
+	keys.sort()
+	var numbers: Array[String] = []
+	for key: Variant in keys:
+		var number := _pose_number(part, String(key))
+		if not number.is_empty():
+			numbers.append("%s: %s" % [key, number])
+	return "(%s)" % ", ".join(numbers)
+
+
+## The map's own poses as map.ron holds them, or nothing for a map with none.
+static func _poses_text(scene: Scene) -> String:
+	if scene.poses.is_empty():
+		return ""
+	var text := "    poses: [\n"
+	for node in scene.poses:
+		var pose: Dictionary = node.file_pose()
+		var arms: Array[String] = []
+		for arm: Variant in pose["arms"]:
+			arms.append(_pose_part(arm if arm is Dictionary else {}))
+		text += "        (version: %d, name: %s, sits: %s, suckers: %s, eyes: %s, lit: %s, body: %s, arms: (%s)),\n" % [
+			OctopusPose.VERSION, _quoted(String(node.name)), pose["sits"], pose["suckers"], pose["eyes"], pose["lit"],
+			_pose_part(pose["body"] if pose["body"] is Dictionary else {}), ", ".join(arms),
+		]
+	return text + "    ],\n"
 
 
 ## Each named piece's name is plain and its own, as the game's checker wants.
@@ -2908,6 +3020,11 @@ static func _piece_lines(pieces: Array[Dictionary]) -> String:
 			named = ", name: Some(\"%s\")" % piece["name"]
 			if piece["switch"]:
 				named += ", switch: true"
+		if piece.has("poses"):
+			var names: Array[String] = []
+			for pose_name: String in piece["poses"]:
+				names.append(_quoted(pose_name))
+			named += ", poses: [%s]" % ", ".join(names)
 		var made_of := ("model: Some(\"%s\")" % piece["model"]) if piece.has("model") else ("kit: \"%s\"" % piece["kit"])
 		lines += "        (%s, at: %s, up: %s, turn: %s, scale: %s%s),\n" % [
 			made_of, _xyz(piece["at"]), _xyz(piece["up"]), _number(piece["turn"]), _number(piece["scale"]), named
@@ -3076,6 +3193,8 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	# A grid round the map's middle keeps the format older games read (#264).
 	if root.play_area() != null and root.has_seabed and root.seabed_side != 0 and root.seabed_middle != Vector2.ZERO:
 		format = GRID_MIDDLE_FORMAT
+	if not scene.poses.is_empty() or _offers_any(scene):
+		format = POSES_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]
 	if root.play_area() != null:
 		var area := root.area_box()
@@ -3107,5 +3226,6 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += _lantern_text(scene)
 	text += _haunts_text(scene)
 	text += soft
+	text += _poses_text(scene)
 	text += ")\n"
 	return text
