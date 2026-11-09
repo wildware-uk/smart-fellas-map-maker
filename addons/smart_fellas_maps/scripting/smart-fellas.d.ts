@@ -43,7 +43,8 @@
 //
 // mode.json may also say, each optional:
 // - "minDivers", "minOctopuses": the fewest players on each team a round may start with (0);
-// - "teamLines": { "octopus": "...", "diver": "..." }, the lines under each team's name in the
+// - "teamLines": { "octopus": "...", "diver": "...", "shark": "..." } ("shark" only for a mode
+//   that opens the sharks), the lines under each team's name in the
 //   lobby, and "startLines" the same shape, the lines under the banner as the hunt starts (1 to 60
 //   characters each);
 // - "look": "catches" or "turns" for the game's own octopuses-left count and results (Classic's,
@@ -59,8 +60,12 @@ interface Point {
   readonly z: number;
 }
 
-/** A side in a match: the octopuses (Smart Fellas) or the divers (Fart Smellas). */
-type Team = "octopus" | "diver";
+/**
+ * A side in a match: the octopuses (Smart Fellas), the divers (Fart Smellas) or the sharks, players
+ * who each drive a reef shark. The sharks are closed in every mode until one opens them
+ * (game.openTeam("shark")).
+ */
+type Team = "octopus" | "diver" | "shark";
 /** A tool a diver may carry (game.loadout). */
 type Tool = "spear" | "net" | "sensor" | "torch";
 
@@ -378,7 +383,7 @@ interface Game {
    * (for game modes).
    */
   closeTeam(team: Team, why: string): void;
-  /** Opens a team closed by closeTeam again (for game modes). */
+  /** Opens a team closed by closeTeam again, or the sharks, closed until a mode opens them (for game modes). */
   openTeam(team: Team): void;
   /**
    * The mode alone decides how many bots a team has, with setBots: the lobby hides the host's bot
