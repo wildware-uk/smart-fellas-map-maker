@@ -14,14 +14,16 @@ const WORDS_OVER := "Heavy: this will run slowly on mid-level computers. It stil
 
 var _rows := {}
 var _verdict: Label
+## What the open map's own models cost, as last counted.
+var _own := {}
 
 
 func _ready() -> void:
 	name = "Cost meter"
 	custom_minimum_size = Vector2(0.0, 26.0)
 	_add_row("pieces", "Pieces", "How many pieces the map places. Many cost frame time: the colour is advice, and nothing stops you.")
-	_add_row("triangles", "Triangles", "What all the pieces come to in triangles. This is what costs the most to draw: a coral bush is thousands, and a pebble is 80. The colours were measured in the real game at 1080p Medium, and are only advice.")
-	_add_row("draws", "Draws", "How many different kinds of piece the map uses, and one for the sand. Each kind is drawn in one go, so many of one kind cost far less here than a few of many kinds.")
+	_add_row("triangles", "Triangles", "What all the pieces come to in triangles, your own models' too. This is what costs the most to draw: a coral bush is thousands, and a pebble is 80. The colours were measured in the real game at 1080p Medium, and are only advice.")
+	_add_row("draws", "Draws", "How many different kinds of piece the map uses, and one for the sand. Each of your own models counts one for each of its materials. Each kind is drawn in one go, so many of one kind cost far less here than a few of many kinds.")
 	_verdict = Label.new()
 	_verdict.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_verdict.clip_text = true
@@ -52,12 +54,16 @@ func _add_row(key: String, words: String, tip: String) -> void:
 	_rows[key] = {"bar": bar, "value": value, "fill": fill}
 
 
-## Shows what `map` costs, or nothing if no map is open.
-func show_cost(map: SmartFellasMap) -> void:
+## Shows what `map` costs, or nothing if no map is open. Its own models are counted again only when
+## `recount_own`, as finding them walks the whole scene and a brush stroke doesn't change them.
+func show_cost(map: SmartFellasMap, recount_own := true) -> void:
 	visible = map != null
 	if map == null:
+		_own = {}
 		return
-	var cost := Cost.of(map)
+	if recount_own or _own.is_empty():
+		_own = Cost.own_models_of(map)
+	var cost := Cost.of(map, _own)
 	_show_row("pieces", cost["pieces"], Cost.PIECES_CLOSE, Cost.PIECES_OVER)
 	_show_row("triangles", cost["triangles"], Cost.TRIANGLES_CLOSE, Cost.TRIANGLES_OVER)
 	_show_row("draws", cost["draws"], Cost.DRAWS_CLOSE, Cost.DRAWS_OVER)

@@ -2641,13 +2641,18 @@ static func _collect_scatters(node: Node, found: Array[MultiMeshInstance3D]) -> 
 		_collect_scatters(child, found)
 
 
+## How many of `many`'s copies show, and so become pieces.
+static func copies_in(many: MultiMesh) -> int:
+	return many.instance_count if many.visible_instance_count < 0 else mini(many.visible_instance_count, many.instance_count)
+
+
 ## Makes each copy of each scattered mesh (MultiMeshInstance3D) a piece of a model of that mesh, as if each
 ## had been placed by hand. Copies that are stretched one way more than another, or tinted by their
 ## material, get a model of their own for each stretch and shade, so the game draws them as Godot does.
 static func _read_scatters(root: SmartFellasMap, scene: Scene) -> void:
 	for scatter in scatters(root):
 		var many := scatter.multimesh
-		var count := many.instance_count if many.visible_instance_count < 0 else mini(many.visible_instance_count, many.instance_count)
+		var count := copies_in(many)
 		if count == 0:
 			continue
 		var buffer := many.buffer

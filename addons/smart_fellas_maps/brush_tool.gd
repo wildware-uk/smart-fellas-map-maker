@@ -223,7 +223,7 @@ func _tell_about_the_count() -> void:
 	if _stroke.placed == _pieces_told:
 		return
 	_pieces_told = _stroke.placed
-	var pieces: int = Cost.of(_map)["pieces"]
+	var pieces: int = Cost.kit_of(_map)["pieces"]
 	if pieces >= Cost.PIECES_CLOSE and not _warned_close:
 		_warned_close = true
 		said.emit("This map has %d pieces now: past about %d, a map starts to cost frame rate. Nothing stops you." % [pieces, Cost.PIECES_CLOSE])
@@ -264,7 +264,7 @@ func draw(overlay: Control, camera: Camera3D) -> void:
 	if _hover.is_empty():
 		return
 	var colour := ERASE_COLOUR if _erase_held else PAINT_COLOUR
-	if not _erase_held and Cost.of(_map)["pieces"] >= MapExporter.MOST_PIECES:
+	if not _erase_held and Cost.kit_of(_map)["pieces"] >= MapExporter.MOST_PIECES:
 		colour = FULL_COLOUR
 	var at: Vector3 = _hover["at"]
 	var normal: Vector3 = _hover["normal"]

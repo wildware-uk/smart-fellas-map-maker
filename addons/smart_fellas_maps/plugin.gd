@@ -78,6 +78,8 @@ var _carrier: Carrier
 var _drops: Array[Control] = []
 var _map: SmartFellasMap
 var _cost_is_stale := true
+## Whether the map's nodes have changed since the cost meter last counted its own models.
+var _own_cost_is_stale := true
 ## Whether the Map panel should look at the map again. That reads every piece: 70 ms on the owner's map of
 ## thousands. So while a stroke is under way only the cost meter keeps up, and the panel catches up after.
 var _panel_is_stale := true
@@ -306,7 +308,8 @@ func _process(delta: float) -> void:
 			drop.sleep()
 	if _cost_is_stale:
 		_cost_is_stale = false
-		_cost_bar.show_cost(_map)
+		_cost_bar.show_cost(_map, _own_cost_is_stale)
+		_own_cost_is_stale = false
 	if _panel_is_stale and _tool.is_idle():
 		_panel_is_stale = false
 		_map_panel.show_map()
@@ -502,15 +505,17 @@ func _redraw_play_area() -> void:
 			box.update_gizmos()
 
 
-## The cost meter and the Map panel should look at the map again.
-func _map_changed() -> void:
+## The cost meter and the Map panel should look at the map again: all of it, unless only painted pieces
+## changed.
+func _map_changed(only_painted := false) -> void:
 	_cost_is_stale = true
+	_own_cost_is_stale = _own_cost_is_stale or not only_painted
 	_panel_is_stale = true
 
 
 func _on_pieces_changed() -> void:
 	_play_area.forget()
-	_map_changed()
+	_map_changed(true)
 
 
 func _on_history_changed() -> void:
