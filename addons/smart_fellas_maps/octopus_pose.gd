@@ -24,7 +24,9 @@ const MOST_POSES := 128
 const MOST_A_PIECE := 7
 ## Where a piece keeps the names of the poses it offers, as a PackedStringArray in its metadata.
 const OFFERS := "smart_fellas_poses"
-## The pose file version the add-on writes: the game's POSE_FORMAT_VERSION.
+## The pose file version the add-on writes. Every game since the first reads it, so a map's poses load in
+## older games too. The game's own pose files are at its POSE_FORMAT_VERSION, 2 since its studio got a
+## Grip dial; a map's poses always kept the grip they were written with, as the add-on has had one all along.
 const VERSION := 1
 ## The octopus's own skin, until a piece offering the pose lends it a look.
 const SKIN := Color(0.63, 0.42, 0.34)
@@ -246,12 +248,13 @@ static func copied_to_all(pose: Dictionary, from: int) -> Dictionary:
 	return result
 
 
-## The octopus at rest, as the game makes a new pose: lying flat, arms out.
+## The octopus at rest, as the game makes a new pose: lying flat, arms out, gripping nothing, so
+## arms raised later hold where they are put.
 static func rest_pose() -> Dictionary:
 	var arms := []
 	for arm in ARMS:
 		arms.append({})
-	return {"version": VERSION, "name": "", "sits": "Floor", "suckers": "Hidden", "eyes": "Covered", "lit": "OwnShape", "body": {}, "arms": arms, "water": {}}
+	return {"version": VERSION, "name": "", "sits": "Floor", "suckers": "Hidden", "eyes": "Covered", "lit": "OwnShape", "body": {"grip": 0.0}, "arms": arms, "water": {}}
 
 
 ## How a pose dropped on a surface facing `normal` sits: on a floor, a wall or a ceiling.
