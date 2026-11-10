@@ -7,7 +7,7 @@ extends Node3D
 ## - kit pieces, dragged in from addons/smart_fellas_maps/models/kit/;
 ## - Marker3Ds that the Map panel drops in, whose names say what they are: spawn_octopus_..., spawn_diver_...,
 ##   food_patch_..., fish_lionfish_..., fish_flounder_..., angler_..., jellies_..., lantern_..., goblin_route_..., wrasse_...,
-##   stingray_..., eel_hole_... and groper_hole_...
+##   stingray_..., eel_hole_..., groper_hole_... and garden_eels_...
 ##
 ## It also draws the map with the game's water, so that it looks here as it will in the game.
 

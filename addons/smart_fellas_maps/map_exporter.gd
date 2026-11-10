@@ -154,7 +154,8 @@ const MOST_IN_A_JELLY_GROUP := 16
 const JELLY_SPREADS := Vector2(0.5, 12.0)
 const LANTERN_ROAMS := Vector2(0.0, 25.0)
 const MOST_ROUTE_POINTS := 64
-## The game's MAX_HAUNTS: the most of each of wrasse spots, stingray stops, eel holes and groper holes.
+## The game's MAX_HAUNTS: the most of each of wrasse spots, stingray stops, eel holes, groper holes and
+## garden eel fields.
 const MOST_HAUNTS := 64
 const FEWEST_ROUTE_POINTS := 2
 const FISH_FLOUNDER := "fish_flounder_"
@@ -170,6 +171,7 @@ const HAUNTS := [
 	["stingrays", "stingray_", "Stingray stop", "stingray stops"],
 	["eels", "eel_hole_", "Eel hole", "eel holes"],
 	["gropers", "groper_hole_", "Groper hole", "groper holes"],
+	["garden_eels", "garden_eels_", "Garden eel field", "garden eel fields"],
 ]
 const JELLY_HUES := ["Teal", "Blue", "Pink"]
 ## The game's MAX_CUSTOM_PIECES: the most kit pieces a map may place. The game refuses anything over it
@@ -222,7 +224,7 @@ class Scene:
 	var jellies: Array[Dictionary] = []
 	var goblin_route: Array[Dictionary] = []
 	## Each list of the haunts section by its name in map.ron, as {"at", "node"}.
-	var haunts := {"wrasse": [], "stingrays": [], "eels": [], "gropers": []}
+	var haunts := {"wrasse": [], "stingrays": [], "eels": [], "gropers": [], "garden_eels": []}
 	## The trigger zones for the map's script, as {"name", "at", "reach", "node"}.
 	var triggers: Array[Dictionary] = []
 	## The map's own octopus poses, as their nodes, in the order map.ron has them.
@@ -281,7 +283,7 @@ class Scene:
 	var sources := {
 		"Piece": [], "Octopus spawn": [], "Diver spawn": [], "Food patch": [], "Food spot": [], "Fish": [],
 		"Anglerfish spot": [], "Lantern fish school": [], "Jellyfish group": [], "Goblin shark route point": [],
-		"Wrasse spot": [], "Stingray stop": [], "Eel hole": [], "Groper hole": [],
+		"Wrasse spot": [], "Stingray stop": [], "Eel hole": [], "Groper hole": [], "Garden eel field": [],
 		"Trigger zone": [], "Pose": [],
 	}
 

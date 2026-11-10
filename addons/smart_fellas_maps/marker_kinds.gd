@@ -22,6 +22,7 @@ const KINDS := {
 	"stingray": {"prefix": "stingray_", "words": "Stingray stop", "colour": Color(0.75, 0.75, 0.6), "lift": 0.05, "on_surface": false},
 	"eel_hole": {"prefix": "eel_hole_", "words": "Eel hole", "colour": Color(0.55, 0.85, 0.3), "lift": 0.5, "on_surface": false},
 	"groper_hole": {"prefix": "groper_hole_", "words": "Groper hole", "colour": Color(0.75, 0.5, 0.3), "lift": 1.0, "on_surface": false},
+	"garden_eels": {"prefix": "garden_eels_", "words": "Garden eel field", "colour": Color(0.95, 0.88, 0.65), "lift": 0.3, "on_surface": false},
 }
 
 

@@ -78,6 +78,7 @@ const CRAWL_WORDS := ["By size", "Crawl on", "Go round"]
 const CRAWL_TIP := "Whether octopuses crawl on it or go round it. By size, they go round one under %s m across and tall, as they go round a coral or a bush, and crawl on anything bigger, and on sand and silt." % MapExporter.SMALL_GROWTH_MOST
 const WILDLIFE_KINDS := [
 	"fish_lionfish", "fish_flounder", "angler", "jellies", "lantern", "goblin_route", "wrasse", "stingray", "eel_hole", "groper_hole",
+	"garden_eels",
 ]
 
 var undo: EditorUndoRedoManager
@@ -637,10 +638,10 @@ func show_map() -> void:
 	show_area()
 	var rules := MapExporter.read_rules(map)
 	var sizes := MapExporter.team_sizes(map, rules)
-	_counts.text = "%d octopus and %d diver spawn points, %d food patches. Up to %d divers and %d octopuses.\n%d fish, %d anglerfish spots, %d jellyfish in %d groups, %d lantern schools, %d goblin route points.\n%d wrasse spots, %d stingray stops, %d eel holes, %d groper holes.\nTrigger zones for the map's script: %d." % [
+	_counts.text = "%d octopus and %d diver spawn points, %d food patches. Up to %d divers and %d octopuses.\n%d fish, %d anglerfish spots, %d jellyfish in %d groups, %d lantern schools, %d goblin route points.\n%d wrasse spots, %d stingray stops, %d eel holes, %d groper holes, %d garden eel fields.\nTrigger zones for the map's script: %d." % [
 		rules.octopus_spawns.size(), rules.diver_spawns.size(), rules.patches.size(), sizes["divers"], sizes["octopuses"],
 		rules.fish.size(), rules.angler_spots.size(), rules.jelly_count(), rules.jellies.size(), rules.lantern_schools.size(), rules.goblin_route.size(),
-		rules.haunts["wrasse"].size(), rules.haunts["stingrays"].size(), rules.haunts["eels"].size(), rules.haunts["gropers"].size(),
+		rules.haunts["wrasse"].size(), rules.haunts["stingrays"].size(), rules.haunts["eels"].size(), rules.haunts["gropers"].size(), rules.haunts["garden_eels"].size(),
 		rules.triggers.size(),
 	]
 	_problems.text = "\n".join(rules.problems)

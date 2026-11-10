@@ -45,7 +45,7 @@ const CHOSEN_MAPS_KEY := "smart_fellas/maps_folder"
 const NAMED_THINGS := [
 	"Piece", "Octopus spawn", "Diver spawn", "Food patch", "Food spot", "Fish", "Anglerfish spot",
 	"Lantern fish school", "Jellyfish group", "Goblin shark route point", "Wrasse spot", "Stingray stop", "Eel hole",
-	"Groper hole", "Trigger zone",
+	"Groper hole", "Garden eel field", "Trigger zone",
 ]
 
 
