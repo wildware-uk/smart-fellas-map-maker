@@ -82,6 +82,31 @@ interface TeamSpec {
   /** The line under the banner its players see as the hunt starts, at most 60 characters. */
   startLine?: string;
 }
+/**
+ * An ability a game mode gives one of its own teams (game.registerAbility). The game shows it on
+ * the HUD of that team's players with its key, its name and its cooldown, and aims it for them: it
+ * goes off only when someone they can see (not hidden, behind rock or in ink) is near the middle
+ * of their screen and within `range`.
+ */
+interface AbilitySpec {
+  /** The team whose players have it: one the mode added with game.registerTeam. */
+  team: Team;
+  /** Which of the team's two ability keys it is on: 1 is the player's Dash key, 2 their Ink key. */
+  slot: 1 | 2;
+  /** What players read under its button, 1 to 16 characters. */
+  name: string;
+  /** Seconds from one use to the next, up to 600 (at least a quarter of a second). */
+  cooldown: number;
+  /** How far off whoever it is aimed at may be, 1 to 60 metres. */
+  range: number;
+  /**
+   * If given, the user's creature darts straight at whoever it was aimed at: at `speed` (1 to 40
+   * metres a second) for at most `metres` (1 to 60). Rock stops it. game.onAbilityLand hears it
+   * get there.
+   */
+  lunge?: { speed: number; metres: number };
+}
+
 /** A tool a diver may carry (game.loadout). */
 type Tool = "spear" | "net" | "sensor" | "torch";
 
@@ -141,6 +166,13 @@ type Fate = "out" | "held" | "respawn" | "turn";
  * - "roam": wanders about;
  * - "hunt": a diver hunts as usual; an octopus goes after the nearest diver it can see;
  * - "goTo": swims to a point and stays there.
+ *
+ * A bot on a team the mode added (game.registerTeam) heeds "own" and "hunt" only. With "own" its
+ * creature swims on its own brain, as a wild one does. With "hunt" the bot plays it as a person
+ * would, through the same controls: it goes for the nearest player of another team it can see
+ * (nobody hidden, behind rock or in ink), bites when it is close, uses its team's abilities
+ * (game.registerAbility) when they are ready, and between chases looks round the food patches that
+ * have food on them.
  */
 type Goal = "own" | "hide" | "flee" | "roam" | "hunt" | "goTo";
 
@@ -224,6 +256,13 @@ interface Player {
   removeBot(): void;
   /** Gives this bot something to be after; "goTo" takes a point (bots only, for game modes). */
   setGoal(goal: Goal, x?: number, y?: number, z?: number): void;
+  /**
+   * The creature they drive takes `target` in its jaws, as its own bite landing does: the catch, the
+   * kill and its credit all happen, wherever the two are. Nothing happens unless both are alive in
+   * a round being played, they drive a creature that bites (a shark), and its mouth is empty (for
+   * game modes).
+   */
+  bite(target: Player): void;
   /**
    * Sets their cell under one of the columns game.scoreboard() named: a number, or text of 0 to 16
    * characters (for game modes).
@@ -410,6 +449,13 @@ interface Game {
    */
   registerTeam(id: string, team: TeamSpec): void;
   /**
+   * Gives a team the mode added an ability, or changes one it gave: `id` (1 to 16 lower-case
+   * letters) is what onAbility and onAbilityLand call it. A team may have 2, one in each slot. The
+   * game does the key, the HUD button, the cooldown and the aiming; what the ability does is up to
+   * the handlers. Call it from onMatchStart, after registerTeam (for game modes).
+   */
+  registerAbility(id: string, ability: AbilitySpec): void;
+  /**
    * The mode alone decides how many bots a team has, with setBots: the lobby hides the host's bot
    * count for that team and says the mode sets it (for game modes).
    */
@@ -477,6 +523,13 @@ interface Game {
   onCaught(handler: (player: Player, by: Player | null, how: Catch) => void): void;
   /** Calls `handler` when a player is killed, with who killed them, if a player did. */
   onKilled(handler: (player: Player, by: Player | null) => void): void;
+  /**
+   * Calls `handler` when a player uses one of the mode's abilities (game.registerAbility), with its
+   * id and who it was aimed at. Its cooldown has started; a lunge, if it has one, is on its way.
+   */
+  onAbility(handler: (player: Player, ability: string, target: Player) => void): void;
+  /** Calls `handler` when an ability's lunge reaches who it was aimed at. */
+  onAbilityLand(handler: (player: Player, ability: string, target: Player) => void): void;
 }
 
 /** The match. */

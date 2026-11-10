@@ -28,6 +28,46 @@ For your editor to complete and check your scripts, copy `smart-fellas.d.ts` fro
 `scripting` folder into `scripts/`. It lists every call, and the ones marked "for game modes" change
 the round's rules.
 
+## Teams, bots and abilities of your own
+
+A mode can add up to two teams whose players each drive a creature, tell their bots how to play, and
+give them abilities. All of it is in `smart-fellas.d.ts`; this is the short of it.
+
+```ts
+game.onMatchStart(() => {
+  // A team of sharks, joined in the lobby like any team.
+  game.registerTeam("shark", { name: "Sharks", colour: "#a9d2ec", body: "shark", most: 3 });
+  // An ability on the sharks' Dash key: a fast lunge at someone in view, every 8 seconds.
+  game.registerAbility("quickdash", {
+    team: "shark",
+    slot: 1,
+    name: "Quick dash",
+    cooldown: 8,
+    range: 14,
+    lunge: { speed: 22, metres: 14 },
+  });
+});
+
+// What it does is yours to say: here the shark takes an octopus it reaches in its jaws.
+game.onAbilityLand((player, ability, target) => {
+  if (ability === "quickdash" && target.team === "octopus") {
+    player.bite(target);
+  }
+});
+
+// A bot told to "hunt" plays its creature as a person would, abilities and all.
+game.onJoin((player) => {
+  if (player.isBot && player.team === "shark") {
+    player.setGoal("hunt");
+  }
+});
+```
+
+- The game shows each ability to its team's players as a round button with its key, its name and its
+  cooldown, and aims it: it goes off only at someone they can see near the middle of their screen.
+- `game.onAbility` hears every use, `game.onAbilityLand` a lunge getting there. Sounds, points and
+  what happens to who was hit are up to your handlers.
+
 ## Share it
 
 In **My modes**, your mode is listed. Press **Edit & publish**, give it a title and a
