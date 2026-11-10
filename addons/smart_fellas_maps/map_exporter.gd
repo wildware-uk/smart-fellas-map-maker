@@ -29,6 +29,12 @@ const BOX_FORMAT := 6
 const GRID_MIDDLE_FORMAT := 7
 ## The game's POSES_FORMAT, for a map with octopus poses of its own, which must have a play area box.
 const POSES_FORMAT := 8
+## The game's CRAWL_FORMAT, for a box map that says whether octopuses crawl on some of its own models, and
+## otherwise as POSES_FORMAT.
+const CRAWL_FORMAT := 9
+## The game's SMALL_GROWTH_MOST in src/map/reef.rs: a model of the map's own under this many metres across
+## and tall, once scaled, is a growth octopuses go round, unless the map says otherwise.
+const SMALL_GROWTH_MOST := 1.1
 ## Where a map's own models go in its package.
 const ASSETS_FOLDER := "assets"
 ## The end of a map package's file name: Smart Fellas Map.
@@ -227,6 +233,8 @@ class Scene:
 	var pictures := {}
 	## What each of those models is made of, by its name in assets/: "rock", "sand" or "silt".
 	var model_grounds := {}
+	## Whether octopuses crawl on each of those models, by its name in assets/: "size", "always" or "never".
+	var model_crawls := {}
 	## The surfaces of the map's pieces and seabed, for what lies on them, made once Export needs it.
 	var finder: RefCounted
 	## The models Export made itself, from a model the game can't take as it is, by their name in assets/,
@@ -967,6 +975,13 @@ static func ground_of(map: SmartFellasMap, found: Dictionary) -> String:
 	return "rock" if key.is_empty() else map.soft_models.get(key, "rock")
 
 
+## Whether octopuses crawl on `found`, one of own_model_pieces: "size" when the game judges it by its size,
+## as it does unless the map maker chose, "always" or "never".
+static func crawl_of(map: SmartFellasMap, found: Dictionary) -> String:
+	var key := ground_key(found)
+	return "size" if key.is_empty() else map.crawl_models.get(key, "size")
+
+
 ## The meshes drawn in `node` and under it, that a model made from it would hold.
 static func meshes_in(node: Node) -> Array[MeshInstance3D]:
 	var meshes: Array[MeshInstance3D] = []
@@ -1107,6 +1122,7 @@ static func _read_scene_with(root: SmartFellasMap, picture_side: int) -> Scene:
 	for found in kit_pieces(root):
 		_read_piece(found["node"], found["kit"], scene)
 	_read_own_models(root, scene)
+	_check_crawls(root, scene)
 	_read_scatters(root, scene)
 	_check_model_totals(scene)
 	_read_painted(root, scene)
@@ -1207,6 +1223,10 @@ static func _check_sculpted(root: SmartFellasMap, scene: Scene) -> void:
 	if not middle.is_finite():
 		scene.problems.append("The sculpted seabed's middle isn't a real place. Press Flatten in the Map panel.")
 		return
+	# Only a map with a play area box may have its ground off the middle: the game refuses it otherwise.
+	if middle != Vector2.ZERO and root.play_area() == null:
+		scene.problems.append("The sculpted seabed was made over a play area box that's gone. Press Fit to map in the Map panel to make a box again, or Flatten to start the ground again.")
+		return
 	if farthest > SCENERY_REACH:
 		scene.problems.append("The sculpted seabed reaches %.0f m from the middle of the map. It must stay within %d km. Press Flatten in the Map panel." % [farthest, roundi(SCENERY_REACH / 1000.0)])
 	var spacing: float = root.seabed_reach * 2.0 / (side - 1)
@@ -1251,7 +1271,8 @@ static func _warn_of_spawns_over_nothing(root: SmartFellasMap, scene: Scene) -> 
 		return
 	for spawn in scene.octopus_spawns + scene.diver_spawns:
 		var at: Vector3 = spawn["at"]
-		if scene.finder.find(at, Vector3(at.x, root.area_box().position.y - 1.0, at.z)).is_empty():
+		# A spawn tucked under a ledge looks down from inside it, and stands on the floor under it.
+		if not scene.finder.meets(at, Vector3(at.x, root.area_box().position.y - 1.0, at.z)):
 			scene.warnings.append({
 				"words": "%s has nothing under it, and the map has no seabed: anyone starting there falls to the bottom of the map. Move it over a piece." % spawn["node"].name,
 				"node": spawn["node"],
@@ -1264,7 +1285,7 @@ static func _warn_of_food_over_nothing(root: SmartFellasMap, scene: Scene) -> vo
 		return
 	for patch in scene.patches:
 		var up: Vector3 = patch["up"]
-		if scene.finder.find(patch["at"] + up * FOOD_FOLLOWS_WITHIN, patch["at"] - up * FOOD_FOLLOWS_WITHIN).is_empty():
+		if not scene.finder.meets(patch["at"] + up * FOOD_FOLLOWS_WITHIN, patch["at"] - up * FOOD_FOLLOWS_WITHIN):
 			scene.warnings.append({
 				"words": "%s has nothing under it, and the map has no seabed: its food floats in open water. Move it onto a piece." % patch["node"].name,
 				"node": patch["node"],
@@ -1359,10 +1380,12 @@ static func _warn_of_close_spawns(root: SmartFellasMap, scene: Scene) -> void:
 			var at_diver: Vector3 = diver["at"]
 			var apart := Vector2(at_octopus.x, at_octopus.z).distance_to(Vector2(at_diver.x, at_diver.z))
 			var box := root.area_box()
-			if apart < minf(box.size.x, box.size.z) * 0.5:
+			var wanted := minf(box.size.x, box.size.z) * 0.5
+			if apart < wanted:
+				# Show it selects the diver spawn, the one to move.
 				scene.warnings.append({
-					"words": "The teams start close: %s and %s are %.0f m apart, under half the play area's width." % [octopus["node"].name, diver["node"].name, apart],
-					"node": octopus["node"],
+					"words": "The teams start close: %s and %s are %.0f m apart, and need %.0f m, half the play area's width. Show it selects %s: drag it and the other diver spawn points to the far end of the play area from the octopus ones." % [octopus["node"].name, diver["node"].name, apart, wanted, diver["node"].name],
+					"node": diver["node"],
 				})
 				return
 
@@ -1597,7 +1620,7 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 		var path: String = found["path"]
 		_warn_of_twin(node, found, first_in_place, scene)
 		if not names_of.has(path) and found.has("alone") and _too_wide(node):
-			var parts := _cut_wide_mesh(node, ground_of(root, found), scene)
+			var parts := _cut_wide_mesh(node, ground_of(root, found), crawl_of(root, found), scene)
 			if parts > 0:
 				scene.changes["cut"] += 1
 				scene.changes["cut_parts"] += parts
@@ -1656,6 +1679,7 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 			names_of[path] = names
 			for each in names:
 				scene.model_grounds[each] = ground_of(root, found)
+				scene.model_crawls[each] = crawl_of(root, found)
 		for index in names_of[path].size():
 			_read_piece(node, "", scene, names_of[path][index], index == 0)
 	# What maps can't use yet is left out with a word, and the map exports without it.
@@ -2316,7 +2340,7 @@ static func _too_wide(node: MeshInstance3D) -> bool:
 ## of the map's own standing at its own middle: as few as cover the mesh with parts no wider than the game
 ## takes in a model, each made of `ground`. Triangles further out than the game takes scenery are left out.
 ## Gives back how many parts.
-static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -> int:
+static func _cut_wide_mesh(node: MeshInstance3D, ground: String, crawl: String, scene: Scene) -> int:
 	var place := node.global_transform
 	# The squares the parts are cut by cover the mesh, as far as the game takes scenery.
 	var box: AABB = place * node.mesh.get_aabb()
@@ -2377,6 +2401,7 @@ static func _cut_wide_mesh(node: MeshInstance3D, ground: String, scene: Scene) -
 		if not _take_model(node, String(node.name), name, "cut %d %s" % [node.get_instance_id(), key], bytes, scene):
 			continue
 		scene.model_grounds[name] = ground
+		scene.model_crawls[name] = crawl
 		scene.pieces.append({"model": name, "at": middle, "up": Vector3.UP, "turn": 0.0, "scale": 1.0})
 		scene.sources["Piece"].append("Part %d of %s" % [made + 1, node.name])
 		made += 1
@@ -2493,12 +2518,25 @@ static func split_glbs(node: Node3D, alone: bool, side := PICTURE_SIDE_DRAWN, ch
 	return result
 
 
+## Where Export measures `found`, one of own_model_pieces, from when it checks it is within reach: its origin
+## point, or for a model it builds itself whose meshes lie far from that, as split_glbs makes it, their middle.
+static func measured_from(found: Dictionary) -> Vector3:
+	var node: Node3D = found["node"]
+	if found["made"] != "built":
+		return node.global_position
+	return node.global_transform * _far_middle(node, found.has("alone"))
+
+
 ## The middle of the box the meshes under `top` fill, if any of them reach further than CUT_REACH from
-## `top`'s own middle; nothing otherwise.
-static func _far_middle(top: Node3D) -> Vector3:
+## `top`'s own middle; nothing otherwise. With `alone`, only `top`'s own mesh counts, as a mesh on its own
+## is built without what hangs under it.
+static func _far_middle(top: Node3D, alone := false) -> Vector3:
 	var box := AABB()
 	var any := false
-	for part in meshes_in(top):
+	var parts := meshes_in(top)
+	if alone and top is MeshInstance3D:
+		parts = [top as MeshInstance3D]
+	for part in parts:
 		var placed := _place_under(part, top) * part.mesh.get_aabb()
 		box = placed if not any else box.merge(placed)
 		any = true
@@ -2542,7 +2580,7 @@ static func _read_piece(node: Node3D, kit: String, scene: Scene, model := "", na
 	var scale := place.basis.get_scale()
 	var unequal := maxf(absf(scale.x - scale.y), absf(scale.y - scale.z))
 	if unequal > STRETCH_SLACK * scale.x:
-		scene.problem_among(node, "stretched", "%s is stretched (%s). Scale all three sides the same." % [node.name, scale], "%d pieces are stretched. Scale all three sides of each the same.")
+		scene.problem_among(node, "stretched", "%s is stretched %s. Scale all three sides the same." % [node.name, scale], "%d pieces are stretched. Scale all three sides of each the same.")
 		return
 	if place.basis.determinant() < 0.0:
 		scene.problem_among(node, "mirrored", "%s is mirrored. The game can't draw a piece inside out: scale it by a positive number." % node.name, "%d pieces are mirrored. The game can't draw a piece inside out: scale each by a positive number.")
@@ -3095,11 +3133,22 @@ static func _seabed_text(root: SmartFellasMap, scene: Scene) -> String:
 	return "Sculpted((reach: %s,%s side: %d, heights: [%s], rock_cells: [%s]))" % [_number(root.seabed_reach), middle, root.seabed_side, ", ".join(heights), ", ".join(rock)]
 
 
+## The names in the package of the map's own models some piece is made of, in order. A model whose only
+## piece was left out, as too far out, has none, and the game refuses a choice made for it.
+static func _placed_model_names(scene: Scene) -> Array:
+	var placed := {}
+	for piece in scene.pieces:
+		if piece.has("model"):
+			placed[piece["model"]] = true
+	var names: Array = placed.keys()
+	names.sort()
+	return names
+
+
 ## Which of the map's own models are sand or silt, by their names in the package, or nothing if none is, as
 ## the game leaves it out.
 static func _soft_models_text(scene: Scene) -> String:
-	var names: Array = scene.models.keys()
-	names.sort()
+	var names := _placed_model_names(scene)
 	var entries := ""
 	for name: String in names:
 		var ground: String = scene.model_grounds.get(name, "rock")
@@ -3108,6 +3157,31 @@ static func _soft_models_text(scene: Scene) -> String:
 	if entries.is_empty():
 		return ""
 	return "    soft_models: [%s],\n" % entries
+
+
+## Which of the map's own models octopuses always crawl on or never do, by their names in the package, or
+## nothing if every one is judged by its size, as the game leaves it out.
+static func _crawl_models_text(scene: Scene) -> String:
+	var names := _placed_model_names(scene)
+	var entries := ""
+	for name: String in names:
+		var crawl: String = scene.model_crawls.get(name, "size")
+		if crawl == "always" or crawl == "never":
+			entries += "(model: \"%s\", crawl: %s), " % [name, crawl.capitalize()]
+	if entries.is_empty():
+		return ""
+	return "    crawl_models: [%s],\n" % entries
+
+
+## What Export says of a map with no play area box that chose whether octopuses crawl on its own models.
+const NEEDS_A_BOX_TO_CRAWL := "You chose whether octopuses crawl on some of your own models, and only a map with a play area box can say so. Press Fit to map in the Map panel to make one."
+
+
+## Only a map with a play area box can say whether octopuses crawl on its own models: the format that
+## carries it has one.
+static func _check_crawls(root: SmartFellasMap, scene: Scene) -> void:
+	if root.play_area() == null and not _crawl_models_text(scene).is_empty():
+		scene.problems.append(NEEDS_A_BOX_TO_CRAWL)
 
 
 static func _switch(on: bool) -> String:
@@ -3197,6 +3271,10 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 		format = GRID_MIDDLE_FORMAT
 	if not scene.poses.is_empty() or _offers_any(scene):
 		format = POSES_FORMAT
+	# Only a map that says whether octopuses crawl on its models needs the newer format.
+	var crawls := _crawl_models_text(scene)
+	if root.play_area() != null and not crawls.is_empty():
+		format = CRAWL_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]
 	if root.play_area() != null:
 		var area := root.area_box()
@@ -3229,5 +3307,6 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += _haunts_text(scene)
 	text += soft
 	text += _poses_text(scene)
+	text += crawls
 	text += ")\n"
 	return text

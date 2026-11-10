@@ -90,6 +90,13 @@ var area_depth: float:
 	set(value):
 		soft_models = value
 		pieces_changed.emit()
+## Which of the map's own models octopuses always crawl on, or never do: "always" or "never". Any other is
+## judged by its size, as the game judges it: one small enough is a growth they go round. Known by
+## MapExporter.ground_key, as soft_models is.
+@export_storage var crawl_models: Dictionary[String, String] = {}:
+	set(value):
+		crawl_models = value
+		pieces_changed.emit()
 
 @export_group("Players")
 ## The fewest players the map is made for, counting everyone in the lobby.

@@ -429,9 +429,9 @@ static func _seen_through(material: BaseMaterial3D) -> Seen:
 
 
 ## The game's lighting for a piece that came with `from`, swaying as `sway` says (see `_sway_of`). Every
-## piece with the same of both shares one.
+## piece with the same of both shares one, the seabed apart: it is drawn as sand.
 func _material_for(from: BaseMaterial3D, is_seabed: bool, sway := Vector3.ZERO) -> ShaderMaterial:
-	var key := [from, sway]
+	var key := [from, sway, is_seabed]
 	if _dressed.has(key):
 		return _dressed[key]
 	var material := ShaderMaterial.new()

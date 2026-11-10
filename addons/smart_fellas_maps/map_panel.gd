@@ -70,6 +70,12 @@ const PIECE_KINDS := ["spawn_octopus", "spawn_diver", "food_patch"]
 ## What a map's own model may be made of, in the order the list offers them.
 const MODEL_GROUNDS := ["rock", "sand", "silt"]
 const GROUND_WORDS := ["Rock", "Sand", "Silt"]
+const MODEL_CRAWLS := ["size", "always", "never"]
+## The widest a model's name is kept on its line in the list, in pixels before the editor's scale: past
+## it, it's cut short with "…", and its whole name is in its tip.
+const MOST_NAME_WIDTH := 260.0
+const CRAWL_WORDS := ["By size", "Crawl on", "Go round"]
+const CRAWL_TIP := "Whether octopuses crawl on it or go round it. By size, they go round one under %s m across and tall, as they go round a coral or a bush, and crawl on anything bigger, and on sand and silt." % MapExporter.SMALL_GROWTH_MOST
 const WILDLIFE_KINDS := [
 	"fish_lionfish", "fish_flounder", "angler", "jellies", "lantern", "goblin_route", "wrasse", "stingray", "eel_hole", "groper_hole",
 ]
@@ -99,10 +105,12 @@ var _models_listed: Array[String] = []
 ## The one pick list every model's line opens. A list of its own on each line took half a second to make on a
 ## map of hundreds of models.
 var _ground_menu: PopupMenu
+var _crawl_menu: PopupMenu
 ## The lines for the one model selected in the scene, above the list: its name, wrapped, and its choice.
 var _selected_line: VBoxContainer
 var _selected_label: Label
 var _selected_choice: OptionButton
+var _selected_crawl: OptionButton
 ## The one node selected in the scene, if one is. Untyped, as it may have been freed since.
 var _selected: Variant = null
 var _update_box: UpdateBox
@@ -235,7 +243,7 @@ func _add_seabed(column: Control) -> void:
 ## hundreds, which would push Populate out of reach.
 func _add_own_models(column: Control) -> void:
 	_add_heading(column, "Your own models")
-	_label(column, "What each of your own models and meshes is made of. Octopuses can bury themselves in sand and silt, and Populate grows sand's plants there. Anything else is rock. Select one in the scene to set it here too.")
+	_label(column, "What each of your own models and meshes is made of, and whether octopuses crawl on it or go round it. Octopuses can bury themselves in sand and silt, and Populate grows sand's plants there. Anything else is rock. By size, octopuses go round a small model, as they go round a coral, and crawl on a bigger one. Select one in the scene to set it here too.")
 	_selected_line = VBoxContainer.new()
 	_selected_label = _label(_selected_line, "")
 	_selected_label.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -243,6 +251,10 @@ func _add_own_models(column: Control) -> void:
 	_selected_choice.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_selected_choice.item_selected.connect(func(index: int) -> void: _on_model_ground_chosen(index, str(_selected_choice.get_meta("line", ""))))
 	_selected_line.add_child(_selected_choice)
+	_selected_crawl = _crawl_choice()
+	_selected_crawl.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_selected_crawl.item_selected.connect(func(index: int) -> void: _on_model_crawl_chosen(index, str(_selected_crawl.get_meta("line", ""))))
+	_selected_line.add_child(_selected_crawl)
 	_selected_line.add_child(HSeparator.new())
 	_selected_line.visible = false
 	column.add_child(_selected_line)
@@ -253,6 +265,11 @@ func _add_own_models(column: Control) -> void:
 		_ground_menu.add_radio_check_item(words)
 	_ground_menu.index_pressed.connect(func(index: int) -> void: _on_model_ground_chosen(index, str(_ground_menu.get_meta("line", ""))))
 	add_child(_ground_menu)
+	_crawl_menu = PopupMenu.new()
+	for words in CRAWL_WORDS:
+		_crawl_menu.add_radio_check_item(words)
+	_crawl_menu.index_pressed.connect(func(index: int) -> void: _on_model_crawl_chosen(index, str(_crawl_menu.get_meta("line", ""))))
+	add_child(_crawl_menu)
 
 
 func _sculpt_slider(column: Control, words: String, limits: Vector3, value: float) -> HSlider:
@@ -651,14 +668,20 @@ func _show_models(map: SmartFellasMap) -> void:
 		if lines.is_empty():
 			_label(_models_list, "None yet. Drag a .glb or a mesh from the FileSystem panel into the map.")
 		for line in lines:
-			var row := HBoxContainer.new()
+			# The picks drop under a name too long to share its line with them, so the name stays whole.
+			var row := HFlowContainer.new()
+			var name_line := HBoxContainer.new()
+			name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			var label := Label.new()
 			label.text = line["words"]
 			label.tooltip_text = line["tip"]
 			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			label.mouse_filter = Control.MOUSE_FILTER_PASS
-			row.add_child(label)
+			var font := label.get_theme_font("font")
+			var wide := font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
+			label.custom_minimum_size.x = minf(ceilf(wide) + 2.0, MOST_NAME_WIDTH * EditorInterface.get_editor_scale())
+			name_line.add_child(label)
 			# Beside the name rather than in it, so that a long name cut short never hides it.
 			if line["count"] > 1:
 				var placed := Label.new()
@@ -666,19 +689,30 @@ func _show_models(map: SmartFellasMap) -> void:
 				placed.tooltip_text = "Placed %d times in the map." % line["count"]
 				placed.mouse_filter = Control.MOUSE_FILTER_PASS
 				placed.modulate.a = 0.7
-				row.add_child(placed)
-			var choice := Button.new()
-			choice.icon = get_theme_icon("arrow", "OptionButton")
-			choice.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+				name_line.add_child(placed)
+			row.add_child(name_line)
+			var picks := HBoxContainer.new()
+			picks.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			picks.alignment = BoxContainer.ALIGNMENT_END
+			var choice := _pick_button("Ground")
 			choice.pressed.connect(_pick_ground.bind(choice, line["id"]))
-			row.add_child(choice)
+			picks.add_child(choice)
+			var crawl := _pick_button("Crawl")
+			crawl.tooltip_text = CRAWL_TIP
+			crawl.pressed.connect(_pick_crawl.bind(crawl, line["id"]))
+			picks.add_child(crawl)
+			row.add_child(picks)
 			_models_list.add_child(row)
 	for index in lines.size():
 		var row := _models_list.get_child(index)
-		var choice := row.get_child(row.get_child_count() - 1) as Button
+		var choice := row.find_child("Ground", true, false) as Button
 		var ground := maxi(MODEL_GROUNDS.find(lines[index]["ground"]), 0)
 		choice.text = GROUND_WORDS[ground]
 		choice.set_meta("ground", ground)
+		var crawl := row.find_child("Crawl", true, false) as Button
+		var how := maxi(MODEL_CRAWLS.find(lines[index]["crawl"]), 0)
+		crawl.text = CRAWL_WORDS[how]
+		crawl.set_meta("crawl", how)
 	var selected := line_of(lines, _selected, map)
 	_selected_line.visible = not selected.is_empty()
 	if selected.is_empty():
@@ -689,6 +723,17 @@ func _show_models(map: SmartFellasMap) -> void:
 	_selected_label.tooltip_text = selected["tip"]
 	_selected_choice.select(MODEL_GROUNDS.find(selected["ground"]))
 	_selected_choice.set_meta("line", selected["id"])
+	_selected_crawl.select(MODEL_CRAWLS.find(selected["crawl"]))
+	_selected_crawl.set_meta("line", selected["id"])
+
+
+## A button on a model's line that opens a pick list, called `called`.
+func _pick_button(called: String) -> Button:
+	var button := Button.new()
+	button.name = called
+	button.icon = get_theme_icon("arrow", "OptionButton")
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	return button
 
 
 ## Opens the pick list under `choice`, the button on model line `id`, with what it's made of ticked.
@@ -707,8 +752,25 @@ func _ground_choice() -> OptionButton:
 	return choice
 
 
+## Opens the crawl pick list under `crawl`, the button on model line `id`, with its choice ticked.
+func _pick_crawl(crawl: Button, id: String) -> void:
+	var ticked: int = crawl.get_meta("crawl", 0)
+	for index in CRAWL_WORDS.size():
+		_crawl_menu.set_item_checked(index, index == ticked)
+	_crawl_menu.set_meta("line", id)
+	_crawl_menu.popup(Rect2i(Vector2i(crawl.get_screen_position() + Vector2(0.0, crawl.size.y)), Vector2i(int(crawl.size.x), 0)))
+
+
+func _crawl_choice() -> OptionButton:
+	var choice := OptionButton.new()
+	for words in CRAWL_WORDS:
+		choice.add_item(words)
+	choice.tooltip_text = CRAWL_TIP
+	return choice
+
+
 ## The lines the list shows, one for each model file and each mesh, sorted by their words, as {"id",
-## "words", "count", "tip", "ground", "found"}: "count" is how many times it's placed, and "found" the first
+## "words", "count", "tip", "ground", "crawl", "found"}: "count" is how many times it's placed, and "found" the first
 ## of own_model_pieces it stands for.
 static func model_lines(map: SmartFellasMap) -> Array[Dictionary]:
 	var by_id := {}
@@ -719,7 +781,7 @@ static func model_lines(map: SmartFellasMap) -> Array[Dictionary]:
 		var id := key if not key.is_empty() else "unsaved %d" % (found["node"] as MeshInstance3D).mesh.get_instance_id()
 		counts[id] = counts.get(id, 0) + 1
 		if not by_id.has(id):
-			by_id[id] = {"id": id, "found": found, "ground": MapExporter.ground_of(map, found)}
+			by_id[id] = {"id": id, "found": found, "ground": MapExporter.ground_of(map, found), "crawl": MapExporter.crawl_of(map, found)}
 	var lines: Array[Dictionary] = []
 	for id: String in by_id:
 		var line: Dictionary = by_id[id]
@@ -786,6 +848,25 @@ func _on_model_ground_chosen(index: int, id: String) -> void:
 	else:
 		grounds[key] = MODEL_GROUNDS[index]
 	_set_property("soft_models", grounds)
+
+
+func _on_model_crawl_chosen(index: int, id: String) -> void:
+	var map := _map()
+	if _showing or map == null or id.is_empty():
+		return
+	var line := {}
+	for each in model_lines(map):
+		if each["id"] == id:
+			line = each
+	if line.is_empty():
+		return
+	var key := MapExporter.mark_key(line["found"])
+	var crawls: Dictionary[String, String] = map.crawl_models.duplicate()
+	if MODEL_CRAWLS[index] == "size":
+		crawls.erase(key)
+	else:
+		crawls[key] = MODEL_CRAWLS[index]
+	_set_property("crawl_models", crawls)
 
 
 ## The button for the marker being dropped stays in, and no other.

@@ -72,10 +72,10 @@ static func gather(map: SmartFellasMap) -> Dictionary:
 		var box: AABB = piece.global_transform * (Kit.info(found["kit"])["bounds"] as AABB)
 		pieces.append({"node": piece, "words": String(piece.name), "box": box, "at": piece.global_position})
 	for found in MapExporter.own_model_pieces(map):
-		var meshes := MapExporter.meshes_in(found["node"])
+		var model: Node3D = found["node"]
+		var meshes := MapExporter.meshes_in(model)
 		if not meshes.is_empty():
-			var box := _box_of_meshes(meshes)
-			pieces.append({"node": found["node"], "words": String(found["node"].name), "box": box, "at": box.get_center()})
+			pieces.append({"node": model, "words": String(model.name), "box": _box_of_meshes(meshes), "at": MapExporter.measured_from(found)})
 	for scatter in MapExporter.scatters(map):
 		var many := scatter.multimesh
 		var bounds := many.mesh.get_aabb()
