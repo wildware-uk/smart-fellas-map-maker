@@ -32,6 +32,9 @@ const POSES_FORMAT := 8
 ## The game's CRAWL_FORMAT, for a box map that says whether octopuses crawl on some of its own models, and
 ## otherwise as POSES_FORMAT.
 const CRAWL_FORMAT := 9
+## The game's BLEND_FORMAT, for a box map that says some of its own models blend into the ground, and
+## otherwise as CRAWL_FORMAT.
+const BLEND_FORMAT := 10
 ## The game's SMALL_GROWTH_MOST in src/map/reef.rs: a model of the map's own under this many metres across
 ## and tall, once scaled, is a growth octopuses go round, unless the map says otherwise.
 const SMALL_GROWTH_MOST := 1.1
@@ -237,6 +240,8 @@ class Scene:
 	var model_grounds := {}
 	## Whether octopuses crawl on each of those models, by its name in assets/: "size", "always" or "never".
 	var model_crawls := {}
+	## Whether each of those models blends into the ground it stands on, by its name in assets/.
+	var model_blends := {}
 	## The surfaces of the map's pieces and seabed, for what lies on them, made once Export needs it.
 	var finder: RefCounted
 	## The models Export made itself, from a model the game can't take as it is, by their name in assets/,
@@ -984,6 +989,13 @@ static func crawl_of(map: SmartFellasMap, found: Dictionary) -> String:
 	return "size" if key.is_empty() else map.crawl_models.get(key, "size")
 
 
+## Whether `found`, one of own_model_pieces, blends into the ground it stands on, as the kit's rocks do.
+## None does until the map maker ticks it.
+static func blends_of(map: SmartFellasMap, found: Dictionary) -> bool:
+	var key := ground_key(found)
+	return false if key.is_empty() else map.blend_models.get(key, false)
+
+
 ## The meshes drawn in `node` and under it, that a model made from it would hold.
 static func meshes_in(node: Node) -> Array[MeshInstance3D]:
 	var meshes: Array[MeshInstance3D] = []
@@ -1622,7 +1634,7 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 		var path: String = found["path"]
 		_warn_of_twin(node, found, first_in_place, scene)
 		if not names_of.has(path) and found.has("alone") and _too_wide(node):
-			var parts := _cut_wide_mesh(node, ground_of(root, found), crawl_of(root, found), scene)
+			var parts := _cut_wide_mesh(node, {"ground": ground_of(root, found), "crawl": crawl_of(root, found), "blends": blends_of(root, found)}, scene)
 			if parts > 0:
 				scene.changes["cut"] += 1
 				scene.changes["cut_parts"] += parts
@@ -1682,6 +1694,7 @@ static func _read_own_models(root: SmartFellasMap, scene: Scene) -> void:
 			for each in names:
 				scene.model_grounds[each] = ground_of(root, found)
 				scene.model_crawls[each] = crawl_of(root, found)
+				scene.model_blends[each] = blends_of(root, found)
 		for index in names_of[path].size():
 			_read_piece(node, "", scene, names_of[path][index], index == 0)
 	# What maps can't use yet is left out with a word, and the map exports without it.
@@ -2340,9 +2353,9 @@ static func _too_wide(node: MeshInstance3D) -> bool:
 
 ## Cuts `node`, a mesh on its own too wide for one model, into parts by where its triangles lie, each a model
 ## of the map's own standing at its own middle: as few as cover the mesh with parts no wider than the game
-## takes in a model, each made of `ground`. Triangles further out than the game takes scenery are left out.
-## Gives back how many parts.
-static func _cut_wide_mesh(node: MeshInstance3D, ground: String, crawl: String, scene: Scene) -> int:
+## takes in a model, each with the map maker's `choices` for the mesh: {"ground", "crawl", "blends"}.
+## Triangles further out than the game takes scenery are left out. Gives back how many parts.
+static func _cut_wide_mesh(node: MeshInstance3D, choices: Dictionary, scene: Scene) -> int:
 	var place := node.global_transform
 	# The squares the parts are cut by cover the mesh, as far as the game takes scenery.
 	var box: AABB = place * node.mesh.get_aabb()
@@ -2402,8 +2415,9 @@ static func _cut_wide_mesh(node: MeshInstance3D, ground: String, crawl: String, 
 		scene.built[name] = bytes
 		if not _take_model(node, String(node.name), name, "cut %d %s" % [node.get_instance_id(), key], bytes, scene):
 			continue
-		scene.model_grounds[name] = ground
-		scene.model_crawls[name] = crawl
+		scene.model_grounds[name] = choices["ground"]
+		scene.model_crawls[name] = choices["crawl"]
+		scene.model_blends[name] = choices["blends"]
 		scene.pieces.append({"model": name, "at": middle, "up": Vector3.UP, "turn": 0.0, "scale": 1.0})
 		scene.sources["Piece"].append("Part %d of %s" % [made + 1, node.name])
 		made += 1
@@ -3175,15 +3189,36 @@ static func _crawl_models_text(scene: Scene) -> String:
 	return "    crawl_models: [%s],\n" % entries
 
 
+## Which of the map's own models blend into the ground, by their names in the package, or nothing if none
+## does, as the game leaves it out.
+static func _blend_models_text(scene: Scene) -> String:
+	var names: Array = scene.models.keys()
+	names.sort()
+	var entries := ""
+	for name: String in names:
+		if scene.model_blends.get(name, false):
+			entries += "\"%s\", " % name
+	if entries.is_empty():
+		return ""
+	return "    blend_models: [%s],\n" % entries
+
+
+## What Export says of a map with no play area box that chose some of its own models to blend into the
+## ground.
+const NEEDS_A_BOX_TO_BLEND := "You chose some of your own models to blend into the ground, and only a map with a play area box can say so. Press Fit to map in the Map panel to make one."
+
+
 ## What Export says of a map with no play area box that chose whether octopuses crawl on its own models.
 const NEEDS_A_BOX_TO_CRAWL := "You chose whether octopuses crawl on some of your own models, and only a map with a play area box can say so. Press Fit to map in the Map panel to make one."
 
 
-## Only a map with a play area box can say whether octopuses crawl on its own models: the format that
-## carries it has one.
+## Only a map with a play area box can say whether octopuses crawl on its own models, or which blend into
+## the ground: the formats that carry them have one.
 static func _check_crawls(root: SmartFellasMap, scene: Scene) -> void:
 	if root.play_area() == null and not _crawl_models_text(scene).is_empty():
 		scene.problems.append(NEEDS_A_BOX_TO_CRAWL)
+	if root.play_area() == null and not _blend_models_text(scene).is_empty():
+		scene.problems.append(NEEDS_A_BOX_TO_BLEND)
 
 
 static func _switch(on: bool) -> String:
@@ -3277,6 +3312,10 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	var crawls := _crawl_models_text(scene)
 	if root.play_area() != null and not crawls.is_empty():
 		format = CRAWL_FORMAT
+	# And only one that says some of its models blend into the ground the newer still.
+	var blends := _blend_models_text(scene)
+	if root.play_area() != null and not blends.is_empty():
+		format = BLEND_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]
 	if root.play_area() != null:
 		var area := root.area_box()
@@ -3310,5 +3349,6 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += soft
 	text += _poses_text(scene)
 	text += crawls
+	text += blends
 	text += ")\n"
 	return text

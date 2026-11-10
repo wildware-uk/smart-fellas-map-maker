@@ -75,6 +75,7 @@ const MODEL_CRAWLS := ["size", "always", "never"]
 ## it, it's cut short with "…", and its whole name is in its tip.
 const MOST_NAME_WIDTH := 260.0
 const CRAWL_WORDS := ["By size", "Crawl on", "Go round"]
+const BLEND_TIP := "Whether it blends into the ground it stands on, as the game's own rocks do: the sand or silt round it creeps up its base and fades out, so it looks settled in, not set down on top."
 const CRAWL_TIP := "Whether octopuses crawl on it or go round it. By size, they go round one under %s m across and tall, as they go round a coral or a bush, and crawl on anything bigger, and on sand and silt." % MapExporter.SMALL_GROWTH_MOST
 const WILDLIFE_KINDS := [
 	"fish_lionfish", "fish_flounder", "angler", "jellies", "lantern", "goblin_route", "wrasse", "stingray", "eel_hole", "groper_hole",
@@ -112,6 +113,7 @@ var _selected_line: VBoxContainer
 var _selected_label: Label
 var _selected_choice: OptionButton
 var _selected_crawl: OptionButton
+var _selected_blend: CheckBox
 ## The one node selected in the scene, if one is. Untyped, as it may have been freed since.
 var _selected: Variant = null
 var _update_box: UpdateBox
@@ -244,7 +246,7 @@ func _add_seabed(column: Control) -> void:
 ## hundreds, which would push Populate out of reach.
 func _add_own_models(column: Control) -> void:
 	_add_heading(column, "Your own models")
-	_label(column, "What each of your own models and meshes is made of, and whether octopuses crawl on it or go round it. Octopuses can bury themselves in sand and silt, and Populate grows sand's plants there. Anything else is rock. By size, octopuses go round a small model, as they go round a coral, and crawl on a bigger one. Select one in the scene to set it here too.")
+	_label(column, "What each of your own models and meshes is made of, whether octopuses crawl on it or go round it, and whether it blends into the ground. Octopuses can bury themselves in sand and silt, and Populate grows sand's plants there. Anything else is rock. By size, octopuses go round a small model, as they go round a coral, and crawl on a bigger one. Blend lets the ground creep up its base, as it does on the game's own rocks. Select one in the scene to set it here too.")
 	_selected_line = VBoxContainer.new()
 	_selected_label = _label(_selected_line, "")
 	_selected_label.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -256,6 +258,10 @@ func _add_own_models(column: Control) -> void:
 	_selected_crawl.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_selected_crawl.item_selected.connect(func(index: int) -> void: _on_model_crawl_chosen(index, str(_selected_crawl.get_meta("line", ""))))
 	_selected_line.add_child(_selected_crawl)
+	_selected_blend = _blend_box()
+	_selected_blend.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_selected_blend.toggled.connect(func(on: bool) -> void: _on_model_blend_chosen(on, str(_selected_blend.get_meta("line", ""))))
+	_selected_line.add_child(_selected_blend)
 	_selected_line.add_child(HSeparator.new())
 	_selected_line.visible = false
 	column.add_child(_selected_line)
@@ -702,6 +708,9 @@ func _show_models(map: SmartFellasMap) -> void:
 			crawl.tooltip_text = CRAWL_TIP
 			crawl.pressed.connect(_pick_crawl.bind(crawl, line["id"]))
 			picks.add_child(crawl)
+			var blend := _blend_box()
+			blend.toggled.connect(func(on: bool) -> void: _on_model_blend_chosen(on, line["id"]))
+			picks.add_child(blend)
 			row.add_child(picks)
 			_models_list.add_child(row)
 	for index in lines.size():
@@ -714,6 +723,8 @@ func _show_models(map: SmartFellasMap) -> void:
 		var how := maxi(MODEL_CRAWLS.find(lines[index]["crawl"]), 0)
 		crawl.text = CRAWL_WORDS[how]
 		crawl.set_meta("crawl", how)
+		var blend := row.find_child("Blend", true, false) as CheckBox
+		blend.set_pressed_no_signal(lines[index]["blends"])
 	var selected := line_of(lines, _selected, map)
 	_selected_line.visible = not selected.is_empty()
 	if selected.is_empty():
@@ -726,6 +737,8 @@ func _show_models(map: SmartFellasMap) -> void:
 	_selected_choice.set_meta("line", selected["id"])
 	_selected_crawl.select(MODEL_CRAWLS.find(selected["crawl"]))
 	_selected_crawl.set_meta("line", selected["id"])
+	_selected_blend.set_pressed_no_signal(selected["blends"])
+	_selected_blend.set_meta("line", selected["id"])
 
 
 ## A button on a model's line that opens a pick list, called `called`.
@@ -762,6 +775,15 @@ func _pick_crawl(crawl: Button, id: String) -> void:
 	_crawl_menu.popup(Rect2i(Vector2i(crawl.get_screen_position() + Vector2(0.0, crawl.size.y)), Vector2i(int(crawl.size.x), 0)))
 
 
+## A tick for whether a model blends into the ground.
+func _blend_box() -> CheckBox:
+	var box := CheckBox.new()
+	box.name = "Blend"
+	box.text = "Blend"
+	box.tooltip_text = BLEND_TIP
+	return box
+
+
 func _crawl_choice() -> OptionButton:
 	var choice := OptionButton.new()
 	for words in CRAWL_WORDS:
@@ -771,7 +793,7 @@ func _crawl_choice() -> OptionButton:
 
 
 ## The lines the list shows, one for each model file and each mesh, sorted by their words, as {"id",
-## "words", "count", "tip", "ground", "crawl", "found"}: "count" is how many times it's placed, and "found" the first
+## "words", "count", "tip", "ground", "crawl", "blends", "found"}: "count" is how many times it's placed, and "found" the first
 ## of own_model_pieces it stands for.
 static func model_lines(map: SmartFellasMap) -> Array[Dictionary]:
 	var by_id := {}
@@ -782,7 +804,7 @@ static func model_lines(map: SmartFellasMap) -> Array[Dictionary]:
 		var id := key if not key.is_empty() else "unsaved %d" % (found["node"] as MeshInstance3D).mesh.get_instance_id()
 		counts[id] = counts.get(id, 0) + 1
 		if not by_id.has(id):
-			by_id[id] = {"id": id, "found": found, "ground": MapExporter.ground_of(map, found), "crawl": MapExporter.crawl_of(map, found)}
+			by_id[id] = {"id": id, "found": found, "ground": MapExporter.ground_of(map, found), "crawl": MapExporter.crawl_of(map, found), "blends": MapExporter.blends_of(map, found)}
 	var lines: Array[Dictionary] = []
 	for id: String in by_id:
 		var line: Dictionary = by_id[id]
@@ -868,6 +890,25 @@ func _on_model_crawl_chosen(index: int, id: String) -> void:
 	else:
 		crawls[key] = MODEL_CRAWLS[index]
 	_set_property("crawl_models", crawls)
+
+
+func _on_model_blend_chosen(on: bool, id: String) -> void:
+	var map := _map()
+	if _showing or map == null or id.is_empty():
+		return
+	var line := {}
+	for each in model_lines(map):
+		if each["id"] == id:
+			line = each
+	if line.is_empty():
+		return
+	var key := MapExporter.mark_key(line["found"])
+	var blends: Dictionary[String, bool] = map.blend_models.duplicate()
+	if on:
+		blends[key] = true
+	else:
+		blends.erase(key)
+	_set_property("blend_models", blends)
 
 
 ## The button for the marker being dropped stays in, and no other.

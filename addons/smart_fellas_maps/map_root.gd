@@ -97,6 +97,12 @@ var area_depth: float:
 	set(value):
 		crawl_models = value
 		pieces_changed.emit()
+## Which of the map's own models blend into the ground they stand on, as the kit's rocks do: the ground's
+## sand or silt creeps up their base. Known by MapExporter.ground_key, as soft_models is.
+@export_storage var blend_models: Dictionary[String, bool] = {}:
+	set(value):
+		blend_models = value
+		pieces_changed.emit()
 
 @export_group("Players")
 ## The fewest players the map is made for, counting everyone in the lobby.
