@@ -5,6 +5,9 @@
 // grows on the free spot nearest it. The shark joins its loop round the map at the point nearest
 // SHARK_FROM. Both are in metres. The treasure looks like any crab, so tell players about it, or hide
 // it somewhere worth the swim.
+//
+// Give the treasure a food patch of its own, away from the map's other food. If the round's own food
+// has filled every spot near TREASURE, no treasure grows that round, and nothing is said.
 
 const TREASURE = { x: 0, y: 0, z: 12 };
 const SHARK_FROM = { x: 0, y: 8, z: -30 };

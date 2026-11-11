@@ -3,6 +3,10 @@
 //
 // Set FLOOR and ROOF to the heights of your cave, in metres. Players hear the flood come and are told
 // how high the water is; the cave's own water doesn't change.
+//
+// A player who comes back into the round below the water line is swept away again within a second,
+// and so on until the round ends. Put the places players come back in above where the water gets
+// to, or expect it.
 
 const FLOOR = 0;
 const ROOF = 12;
