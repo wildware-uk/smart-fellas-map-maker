@@ -453,6 +453,11 @@ interface Game {
    * letters) is what onAbility and onAbilityLand call it. A team may have 2, one in each slot. The
    * game does the key, the HUD button, the cooldown and the aiming; what the ability does is up to
    * the handlers. Call it from onMatchStart, after registerTeam (for game modes).
+   *
+   * For a picture of its own on the button, put a square PNG named after the id in the mode's
+   * `icons` folder, beside `scripts`: `icons/quickdash.png` for the id "quickdash". Up to 512 KB
+   * and 1024 pixels across each, and 8 in a mode; it is drawn round, so keep what matters away from the corners. Without
+   * one the button shows a plain arrow.
    */
   registerAbility(id: string, ability: AbilitySpec): void;
   /**

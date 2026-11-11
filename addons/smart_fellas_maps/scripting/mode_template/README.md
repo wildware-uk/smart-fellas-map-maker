@@ -22,6 +22,9 @@ change a script, open the lobby panel again (Tab), and pick the mode again under
 - `scripts/`: TypeScript (`.ts`) or JavaScript (`.js`). Scripts here run in the host's game. Those in
   `scripts/client/` run on each player's own PC, for what only their screen shows, and those in
   `scripts/shared/` on both.
+- `icons/` (optional): a picture for an ability the mode gives a team (`game.registerAbility`). A
+  square PNG named after the ability's id, such as `icons/quickdash.png`: up to 512 KB and 1024
+  pixels across, and 8 in a mode. The game draws it round on that ability's button.
 - `preview.png` (add your own): the picture the Workshop shows, up to 1 MB, 16:9 is best.
 
 For your editor to complete and check your scripts, copy `smart-fellas.d.ts` from the add-on's
