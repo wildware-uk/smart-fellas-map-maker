@@ -161,7 +161,7 @@ func add_rock(kit: String, place: Transform3D) -> void:
 
 
 func _add_kit(kit: String, place: Transform3D, node: Node3D) -> void:
-	_add(kit, Kit.triangle_mesh(kit), Kit.faces_of(kit), Kit.info(kit)["bounds"], place, "rock", node)
+	_add(kit, Kit.triangle_mesh(kit), Kit.faces_of(kit), Kit.info(kit)["bounds"], place, Kit.ground_of(kit), node)
 
 
 func _add(key: Variant, surface: TriangleMesh, faces: PackedVector3Array, bounds: AABB, place: Transform3D, ground: String, node: Node3D) -> void:

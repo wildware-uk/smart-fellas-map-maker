@@ -23,6 +23,7 @@ const GROUPS := [
 	]],
 	["Shells and pebbles", ["prop_clam", "prop_conch", "prop_pebble"]],
 	["Rocks", ["rock_"]],
+	["Ground patches", ["sand_kind_"]],
 	["Wrecks and big shapes", ["arch", "wreck", "platform", "prop_crate", "prop_divebell", "prop_bell_lamp", "landmark"]],
 ]
 
@@ -69,6 +70,9 @@ const PLAIN_NAMES := {
 	"prop_tubes_orange": "Orange tube sponge",
 	"rock_boulder": "Boulder",
 	"rock_cliff": "Cliff",
+	"rock_crusted_boulder": "Crusted boulder",
+	"rock_dark_boulder": "Dark boulder",
+	"rock_layered_boulder": "Layered boulder",
 	"rock_leg": "Small rock",
 	"rock_mossy_boulder": "Mossy boulder",
 	"rock_mossy_shelf": "Mossy shelf",
@@ -78,6 +82,10 @@ const PLAIN_NAMES := {
 	"rock_table": "Warm flat rock",
 	"rock_warm_boulder": "Warm boulder",
 	"rock_warm_shelf": "Warm shelf",
+	"sand_kind_coarse_patch": "Shell sand patch",
+	"sand_kind_dark_patch": "Dark sand patch",
+	"sand_kind_gravel_patch": "Gravel patch",
+	"sand_kind_rippled_patch": "Rippled sand patch",
 	"table_coral": "Table coral",
 	"wreck": "Wreck",
 	"wreck_mast": "Wreck's mast",
@@ -85,6 +93,8 @@ const PLAIN_NAMES := {
 
 ## The starts of the names of the pieces that a brush counts as rock: what things can grow on.
 const SOLID_STARTS := ["rock_", "arch", "wreck", "platform"]
+## The start of the names of the patches of ground: sand and gravel to lay on a seabed.
+const GROUND_START := "sand_kind_"
 ## The starts of the names of the pieces the game lets things pass through: plants, and thin landmarks.
 const SOFT_STARTS := ["foliage_", "landmark_"]
 ## The starts of the names of the big solid pieces that aren't rock, which painted can be grown on too.
@@ -162,6 +172,12 @@ static func is_solid(kit: String) -> bool:
 		if kit.begins_with(start):
 			return true
 	return false
+
+
+## What a piece's surface is to a brush: "sand" for a patch of ground, as the game buries octopuses in it,
+## and "rock" for anything else.
+static func ground_of(kit: String) -> String:
+	return "sand" if kit.begins_with(GROUND_START) else "rock"
 
 
 ## Whether the game makes this piece solid, so that what's placed can land on it: anything but plants
