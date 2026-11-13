@@ -23,13 +23,15 @@ change a script, open the lobby panel again (Tab), and pick the mode again under
   `scripts/client/` run on each player's own PC, for what only their screen shows, and those in
   `scripts/shared/` on both.
 - `icons/` (optional): a picture for an ability the mode gives a team (`game.registerAbility`). A
-  square PNG named after the ability's id, such as `icons/quickdash.png`: up to 512 KB and 1024
+  square PNG named after the ability's id, such as `icons/snap.png`: up to 512 KB and 1024
   pixels across, and 8 in a mode. The game draws it round on that ability's button.
 - `preview.png` (add your own): the picture the Workshop shows, up to 1 MB, 16:9 is best.
 
-For your editor to complete and check your scripts, copy `smart-fellas.d.ts` from the add-on's
-`scripting` folder into `scripts/`. It lists every call, and the ones marked "for game modes" change
-the round's rules.
+For your editor to complete and check your scripts, copy `smart-fellas.d.ts` into `scripts/`, from
+[smart-fellas-modding](https://github.com/wildware-uk/smart-fellas-modding) or the map maker add-on's
+`scripting` folder (the same file). It lists every call, and the ones marked "for game modes" change
+the round's rules. The [modding wiki](https://github.com/wildware-uk/smart-fellas-modding/wiki)
+explains each part, with examples.
 
 ## Teams, bots and abilities of your own
 
@@ -39,21 +41,21 @@ give them abilities. All of it is in `smart-fellas.d.ts`; this is the short of i
 ```ts
 game.onMatchStart(() => {
   // A team of sharks, joined in the lobby like any team.
-  game.registerTeam("shark", { name: "Sharks", colour: "#a9d2ec", body: "shark", most: 3 });
-  // An ability on the sharks' Dash key: a fast lunge at someone in view, every 8 seconds.
-  game.registerAbility("quickdash", {
+  game.registerTeam("shark", { name: "Sharks", colour: "#d98c5f", body: "shark", most: 2 });
+  // An ability on the sharks' Ink key: a short snap at someone in view, every 12 seconds.
+  game.registerAbility("snap", {
     team: "shark",
-    slot: 1,
-    name: "Quick dash",
-    cooldown: 8,
-    range: 14,
-    lunge: { speed: 22, metres: 14 },
+    slot: 2,
+    name: "Snap",
+    cooldown: 12,
+    range: 8,
+    lunge: { speed: 14, metres: 8 },
   });
 });
 
 // What it does is yours to say: here the shark takes an octopus it reaches in its jaws.
 game.onAbilityLand((player, ability, target) => {
-  if (ability === "quickdash" && target.team === "octopus") {
+  if (ability === "snap" && target.team === "octopus") {
     player.bite(target);
   }
 });

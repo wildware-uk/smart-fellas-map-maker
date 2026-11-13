@@ -4,6 +4,9 @@
 // editor that knows TypeScript completes and checks your scripts as you type. Write each script as a
 // .ts file (or plain .js). Export and Test Map turn them into JavaScript for the game.
 //
+// The modding wiki has a guide to every part, with examples to copy:
+// https://github.com/wildware-uk/smart-fellas-modding/wiki
+//
 // Where a script runs is the folder it is in:
 // - Directly in the scripts folder: in the host's game only, which decides the match. What it
 //   changes reaches every player the way everything else does.

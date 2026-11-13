@@ -24,6 +24,8 @@ It's a Godot project with our add-on already switched on. The add-on gives Godot
 
 **Export Map** writes your map straight into Smart Fellas: it shows in the game under **Workshop > Maps > My maps**, where you name it, pick its picture and publish it. **Export to Folder...** writes it anywhere you choose, to share it by hand.
 
+**Scripts and game modes:** a map's scripts make it do things its pieces can't, such as a lever that opens a door, and a game mode sets a match's rules. Both are written in TypeScript. The scripting API, its examples and a guide to every part are in [smart-fellas-modding](https://github.com/wildware-uk/smart-fellas-modding) and [its wiki](https://github.com/wildware-uk/smart-fellas-modding/wiki). The add-on's `addons/smart_fellas_maps/scripting` folder is a copy of that repository's types, examples and mode template.
+
 **Octopus poses** of your own: in the **Poses** panel, press **Add: Octopus pose**, click where it goes, and shape it with the dials or by dragging its arms' tips. Then select a piece and tick the pose under **Octopus poses** in the Inspector: in the game, an octopus next to that piece can take the pose from its near wheel (Q). The octopus is drawn by the game itself, so this needs Smart Fellas installed too.
 
 ## Update it
