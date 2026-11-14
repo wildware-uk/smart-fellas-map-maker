@@ -437,6 +437,21 @@ interface Player {
    * when a round starts and when the lobby comes back (on the host only).
    */
   setSpeed(share: number): void;
+  /**
+   * Whether a script made them invisible (on the host); null in every script on a player's PC,
+   * which isn't told. New in 1.8.0.
+   */
+  readonly invisible: boolean | null;
+  /**
+   * Makes them invisible to everyone else, or seen again with false. No other player's PC is sent
+   * their body (or the creature they drive on a mode's team), so nobody else sees or hears them, or
+   * sees their name, chat bubble or a marker on them, as if they were far off; they still see
+   * themselves and everyone else. They stay solid, and the game's bots still
+   * sense them. It stays until changed, through deaths and respawns, and
+   * goes back to seen when a round starts and when the lobby comes back (on the host only). New in
+   * 1.8.0.
+   */
+  setInvisible(invisible: boolean): void;
   /** Plays one of the game's sounds for them alone, wherever they are (in a client/ script, on that player's own screen only). */
   playSound(sound: SoundName): void;
   /**
