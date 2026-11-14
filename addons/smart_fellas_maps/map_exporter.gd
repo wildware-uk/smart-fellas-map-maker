@@ -145,6 +145,9 @@ const MOST_SEABED_SIDE := 257
 const CLOSEST_SEABED_POINTS := 0.25
 const MOST_SEABED_SLOPE := 6.0
 const MOST_ANGLERS_AT_ONCE := 64
+## The colour grading looks, as `map.ron` names them, in the order the map's Colour grading choice lists
+## them. The game's `src/map/grade.rs` has the same.
+const GRADE_LOOKS := ["Natural", "SunsetViolet", "TropicalShallows", "DeepTeal", "MurkyGreen", "NightBlue", "Postcard"]
 ## The game grows food in at most two thirds of a map's patches, and in at least one.
 const FEWEST_PATCHES := 2
 ## The game's limits on wildlife.
@@ -1373,6 +1376,10 @@ static func _check_players(root: SmartFellasMap, scene: Scene) -> void:
 	if root.most_divers < 0 or root.most_octopuses < 0:
 		scene.problems.append("The divers and octopuses it's made for must be 0 or more. 0 means one for each spawn point.")
 		return
+	if root.grade_look < 0 or root.grade_look >= GRADE_LOOKS.size():
+		scene.problems.append("The colour grading is look %d, which the game doesn't have." % root.grade_look)
+	if not (root.grade_strength >= 0.0 and root.grade_strength <= 1.0):
+		scene.problems.append("The colour grading's strength is %s. It must be from 0 to 1." % root.grade_strength)
 	if root.anglers_at_once < 1 or root.anglers_at_once > MOST_ANGLERS_AT_ONCE:
 		scene.problems.append("Anglerfish at once is %d. It must be from 1 to %d." % [root.anglers_at_once, MOST_ANGLERS_AT_ONCE])
 	var sizes := team_sizes(root, scene)
@@ -3341,6 +3348,7 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	var survey := maxf(maxf(box.size.x, box.size.z) / 32.0, 2.0)
 	text += "    rock_survey_step: %s,\n    small_fish_share: 0.35,\n" % _number(survey)
 	text += WaterLook.section_text(root.water_depth, root.water_overrides)
+	text += _grade_text(root)
 	text += _life_text(root)
 	text += _deep_fauna_text(root, scene)
 	text += _anglers_text(root, scene)
@@ -3352,3 +3360,13 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += blends
 	text += ")\n"
 	return text
+
+
+## The map's `grade` section: its colour grading look and strength, or nothing for the natural look at
+## full strength, which is what a map with no section has.
+static func _grade_text(root: SmartFellasMap) -> String:
+	if root.grade_look == 0 and root.grade_strength == 1.0:
+		return ""
+	if root.grade_look < 0 or root.grade_look >= GRADE_LOOKS.size():
+		return ""
+	return "    grade: (look: %s, strength: %s),\n" % [GRADE_LOOKS[root.grade_look], _number(root.grade_strength)]

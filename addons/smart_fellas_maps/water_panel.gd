@@ -1,6 +1,7 @@
 @tool
 extends VBoxContainer
-## The Water panel: the map's depth with its quick choices, and any one value set by hand. Every change
+## The Water panel: the map's depth with its quick choices, any one value set by hand, and the map's
+## colour grading. Every change
 ## shows at once, goes through Godot's undo, and is saved with the scene for Export to write to map.ron.
 
 ## Show the water was ticked or cleared. It's for the editor alone, so it never goes in the map or its undo.
@@ -23,6 +24,9 @@ const ROWS := [
 	["surface", "Surface overhead", 0.05],
 ]
 
+## What a person calls each colour grading look, in the order of the map's `grade_look`.
+const GRADE_WORDS := ["Natural", "Sunset violet", "Tropical shallows", "Deep teal", "Murky green", "Night blue", "Postcard"]
+
 const MINIMUM_WIDTH := 200.0
 
 var undo: EditorUndoRedoManager
@@ -35,6 +39,8 @@ var _haze_on: CheckBox
 var _haze_colour: ColorPickerButton
 var _rows := {}
 var _summary: Label
+var _grade_look: OptionButton
+var _grade_strength: SpinBox
 var _showing := false
 
 
@@ -63,6 +69,8 @@ func _ready() -> void:
 	_add_haze_row()
 	for row in ROWS:
 		_add_row(row[0], row[1], row[2])
+	add_child(HSeparator.new())
+	_add_grade()
 	show_map()
 
 
@@ -133,6 +141,48 @@ func _add_row(key: String, words: String, step: float) -> void:
 	add_child(line)
 
 
+## The colour grading choice and its strength. Godot's view here doesn't show the grading: the game lays it
+## over the whole picture.
+func _add_grade() -> void:
+	var line := HBoxContainer.new()
+	var label := Label.new()
+	label.text = "Colour grading"
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(label)
+	_grade_look = OptionButton.new()
+	for index in GRADE_WORDS.size():
+		_grade_look.add_item(GRADE_WORDS[index], index)
+	_grade_look.tooltip_text = "The look the game lays over the whole picture on this map, the same for every player. Godot's view here doesn't show it: press Test to see it in the game."
+	_grade_look.item_selected.connect(func(index: int) -> void: _set_grade("grade_look", index))
+	line.add_child(_grade_look)
+	add_child(line)
+	line = HBoxContainer.new()
+	label = Label.new()
+	label.text = "Grading strength"
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(label)
+	_grade_strength = SpinBox.new()
+	_grade_strength.min_value = 0.0
+	_grade_strength.max_value = 1.0
+	_grade_strength.step = 0.05
+	_grade_strength.tooltip_text = "How much of the look shows over the natural one: 0 none of it, 1 all of it."
+	_grade_strength.value_changed.connect(func(value: float) -> void: _set_grade("grade_strength", value))
+	line.add_child(_grade_strength)
+	add_child(line)
+
+
+func _set_grade(property: String, value: Variant) -> void:
+	var map := _map()
+	if _showing or map == null or map.get(property) == value:
+		return
+	undo.create_action("Set the colour grading", UndoRedo.MERGE_ENDS)
+	undo.add_do_property(map, property, value)
+	undo.add_undo_property(map, property, map.get(property))
+	undo.add_do_method(self, "show_map")
+	undo.add_undo_method(self, "show_map")
+	undo.commit_action()
+
+
 func _map() -> SmartFellasMap:
 	return EditorInterface.get_edited_scene_root() as SmartFellasMap
 
@@ -163,6 +213,8 @@ func show_map() -> void:
 		_rows[key]["on"].button_pressed = overrides.has(key)
 		_rows[key]["number"].value = value
 	_summary.text = _summary_of(look)
+	_grade_look.select(map.grade_look)
+	_grade_strength.value = map.grade_strength
 	_showing = false
 
 

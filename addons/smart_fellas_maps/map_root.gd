@@ -140,6 +140,12 @@ var area_depth: float:
 		water_overrides = value
 		show_water()
 
+@export_group("Colour grading")
+## The look the game lays over the whole picture on this map. The Water panel has the same choice.
+@export_enum("Natural", "Sunset violet", "Tropical shallows", "Deep teal", "Murky green", "Night blue", "Postcard") var grade_look := 0
+## How much of the look shows over the natural one, from 0 (none) to 1 (all of it).
+@export_range(0.0, 1.0, 0.01) var grade_strength := 1.0
+
 @export_group("Scripts")
 ## The folder of this map's scripts: TypeScript (.ts) or plain JavaScript (.js) files. Those directly
 ## inside it run in the host's game, those in its client/ folder on each player's own PC, and those in
