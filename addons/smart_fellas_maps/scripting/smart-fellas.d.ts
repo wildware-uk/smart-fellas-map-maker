@@ -118,6 +118,12 @@ interface AbilitySpec {
 /** A tool a diver may carry (game.loadout). */
 type Tool = "spear" | "net" | "sensor" | "torch";
 
+/**
+ * Something a player does that a script may switch off for them alone, with player.allow(): an
+ * octopus's dash, ink, grab and smell, and a diver's gun ("shoot", whichever gun they carry).
+ */
+type Skill = "dash" | "ink" | "grab" | "smell" | "shoot";
+
 /** Where a player is in the round. */
 type Life = "alive" | "respawning" | "out" | "waiting";
 
@@ -337,6 +343,28 @@ interface Player {
    * with the same limits as game.say (in a client/ script, on that player's own screen only).
    */
   announce(text: string, seconds?: number): void;
+
+  /**
+   * Switches one of their skills off, or on again with true. A skill switched off does nothing when
+   * they use it: pressing it (or starting to hold smell) plays a soft "no", an octopus's button for
+   * it shows faint, and a diver's crosshair dot dims. Switching grab off lets go of whatever they hold, and stops a grab on its way. Ink or a shot already on
+   * its way finishes. It stays until changed, through deaths and respawns, and every skill comes
+   * back as a round starts and when the lobby comes back, so switch them off in onRoundStart (on
+   * the host only).
+   */
+  allow(skill: Skill, allowed: boolean): void;
+  /**
+   * Whether a skill works for them (true unless a script switched it off); null once gone. On a
+   * player's PC it is what that PC was sent for them.
+   */
+  allowed(skill: Skill): boolean | null;
+
+  /**
+   * A store of values of their own, kept from round to round for the whole match. It is let go at
+   * the first round start after they leave, so onLeave can still read it. Each set of scripts has
+   * its own, as with store.
+   */
+  readonly data: Store;
 }
 
 /** A trigger box placed on the map, found by name with game.zone(). */
@@ -816,12 +844,8 @@ declare class StateMachine<S extends string = string> {
   stop(): void;
 }
 
-/**
- * A store of values by name, for this round: it is emptied as each round starts, before your
- * onRoundStart runs. Each set of scripts has its own: the map's and the mode's don't share one, and
- * each PC's scripts have their own.
- */
-declare const store: {
+/** Values kept by name: the round's store, and each player's data. */
+interface Store {
   /** The value kept under `key`, or `fallback` if there is none. */
   get<T = unknown>(key: string, fallback?: T): T;
   /** Keeps `value` under `key`. */
@@ -836,7 +860,15 @@ declare const store: {
   keys(): string[];
   /** Forgets everything. */
   clear(): void;
-};
+}
+
+/**
+ * A store of values by name, for this round: it is emptied as each round starts, before your
+ * onRoundStart runs. Each set of scripts has its own: the map's and the mode's don't share one, and
+ * each PC's scripts have their own. For values about one player that last the match, use
+ * player.data.
+ */
+declare const store: Store;
 
 /**
  * Writes a line to the game's log on the PC the script runs on: the host's for scripts on the host,
