@@ -1,6 +1,6 @@
 {
   "name": "King of the Reef",
-  "description": "Hold the glowing hill to score. It moves every so often. The leader swims slower. First to the goal wins; when time runs out, the top scorer wins.",
+  "description": "Vote for a hill and hold it to score. It moves every so often. The leader swims slower and cannot ink. First to the goal wins; at time up, the top scorer wins.",
   "minPlayers": 2,
   "maxPlayers": 16,
   "settings": [
