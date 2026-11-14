@@ -243,6 +243,38 @@ interface WidgetSpec {
   colour?: string;
 }
 
+/**
+ * A menu (game.menu): a card on the right of the screen with a title over 2 to 5 choices. Players
+ * pick one with the number keys 1 to 5 (on the top row or the number pad), or on a controller move
+ * along it with the D-pad's up and down and pick with right. Those keys and buttons do nothing else
+ * while it shows. Picking closes it for them.
+ */
+interface MenuSpec {
+  /** The question or heading, 1 to 60 characters. */
+  title: string;
+  /** 2 to 5 choices, each 1 to 30 characters, in the order of the keys that pick them. */
+  choices: string[];
+  /** How long it stays open by itself, in seconds (above 0, up to 600, counted down under it). Left out, it stays until picked from or closed. */
+  seconds?: number;
+}
+
+/** How a vote (game.vote) came out. */
+interface VoteResult {
+  /** The choice with the most answers, or null when nobody answered or the most are tied. */
+  readonly winner: string | null;
+  /** Where the winner is in the vote's choices (0 for the first), or null as for `winner`. */
+  readonly index: number | null;
+  /** How many answered each choice, in the order of the choices. */
+  readonly counts: readonly number[];
+}
+
+/** What game.vote asks: like a menu, but `seconds` must be given, from 1 to 600. */
+interface VoteSpec {
+  title: string;
+  choices: string[];
+  seconds: number;
+}
+
 /** A marker (game.marker) at a point in the world, seen through rock, with its distance under it. */
 interface MarkerSpec {
   /** Where it is, within 1000 m of the map's middle. */
@@ -472,9 +504,10 @@ interface Game {
    * themselves, in a game mode), or "draw" for nobody. The results say why with the game's own line
    * named by `why`, or else that the map (or the game mode) decided. `why` must fit the winning
    * team: "allCaught", "allTurned" and "octopusesLeft" are the divers' wins, "timeUp" and
-   * "diversLeft" the octopuses'.
+   * "diversLeft" the octopuses'. Give `text` (up to 80 characters) to say why in your own words
+   * instead; pass null for `why` to give only that: game.endRound("red", null, "Red held the reef").
    */
-  endRound(winner: Team | Player | "draw", why?: EndWhy): void;
+  endRound(winner: Team | Player | "draw", why?: EndWhy | null, text?: string): void;
   /** Adds time to the round, or takes it away with a negative number: -3600 to 3600 seconds. */
   addTime(seconds: number): void;
 
@@ -676,6 +709,24 @@ interface Game {
    * (in a client/ script, on that player's own screen only).
    */
   removeMarker(id: string, viewers?: Viewers): void;
+  /**
+   * Opens a menu (ids as for widget) on the screens of `viewers`, or everyone's if left out. A
+   * player has one menu at a time: a new one takes the place of the one they have. A pick calls
+   * game.onChoose's handlers and closes the menu for that player; open it again to let them pick
+   * again. It is shown to who is in the match now, not to players who join later, and the lobby
+   * closes every menu. Host scripts only: in a client/ script it does nothing. At most 16 menu
+   * and removeMenu calls a tick; more throws.
+   */
+  menu(id: string, spec: MenuSpec, viewers?: Viewers): void;
+  /** Closes the menu with this id for `viewers`, or everyone, if they still have it. */
+  removeMenu(id: string, viewers?: Viewers): void;
+  /**
+   * Puts a question to `viewers` (or everyone) as a menu, and settles with how it came out once
+   * `seconds` are up or every person shown it has answered, whichever comes first. Each person's
+   * first pick counts; bots never answer and aren't waited for. Its menu's id is "vote-" and a
+   * number, and its picks reach game.onChoose too. Host scripts only.
+   */
+  vote(spec: VoteSpec, viewers?: Viewers): Promise<VoteResult>;
 
   /** Calls `handler` once, when the match starts. */
   onMatchStart(handler: () => void): void;
@@ -726,6 +777,12 @@ interface Game {
   onGrab(handler: (player: Player) => void): void;
   /** Calls `handler` when a diver fires either gun. Heard on the host only. */
   onShoot(handler: (player: Player) => void): void;
+  /**
+   * Calls `handler` when a player picks from a menu this script opened (game.menu), with the menu's
+   * id, where the choice is in its list (0 for the first) and the choice's text. Each menu a player
+   * is shown is picked from once at most; a pick after it closed is never heard.
+   */
+  onChoose(handler: (player: Player, menu: string, choice: number, text: string) => void): void;
 }
 
 /** The match. */
