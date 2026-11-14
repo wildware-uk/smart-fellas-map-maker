@@ -29,7 +29,9 @@ change a script, open the lobby panel again (Tab), and pick the mode again under
 
 For your editor to complete and check your scripts, copy `smart-fellas.d.ts` into `scripts/`, from
 [smart-fellas-modding](https://github.com/wildware-uk/smart-fellas-modding) or the map maker add-on's
-`scripting` folder (the same file). It lists every call, and the ones marked "for game modes" change
+`scripting` folder (the same file), or install it with npm:
+`npm install --save-dev @wildware/smart-fellas`, then add `"types": ["@wildware/smart-fellas"]` to
+the `compilerOptions` in `scripts/tsconfig.json`. It lists every call, and the ones marked "for game modes" change
 the round's rules. The [modding wiki](https://github.com/wildware-uk/smart-fellas-modding/wiki)
 explains each part, with examples.
 
