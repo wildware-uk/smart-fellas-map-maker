@@ -67,6 +67,22 @@ interface Point {
   readonly z: number;
 }
 
+/** Where a ray first met the map: from `game.raycast` and `game.groundBelow`. */
+interface RayHit {
+  /** The point it met the map's rock, sand or pieces. */
+  readonly point: Point;
+  /** Which way that surface faces, one metre long: straight up on flat ground. */
+  readonly normal: Point;
+  /** How far from the ray's start, in metres. */
+  readonly distance: number;
+}
+
+/** The box players swim in, from its lowest corner to its highest. */
+interface PlayArea {
+  readonly min: Point;
+  readonly max: Point;
+}
+
 /**
  * A side in a match: the octopuses (Smart Fellas), the divers (Fart Smellas), or a team the game
  * mode added with game.registerTeam, by the id it gave it.
@@ -502,6 +518,21 @@ interface Game {
   creaturesNear(point: Point, radius: number, kind?: CreatureKind): Creature[];
   /** The nearest living creature or food, of `kind` if given; or null if there is none. */
   nearestCreature(point: Point, kind?: CreatureKind): Creature | null;
+
+  /** The box players swim in. Fixed for the match. */
+  readonly playArea: PlayArea;
+  /**
+   * Casts a ray from `from` to `to` through the map and settles with where it first met the map's
+   * rock, sand or pieces, or null if nothing is in the way. It meets only the map: players,
+   * creatures, plants and the play area's edge are let through. The answer comes on the next tick
+   * (a sixty-fourth of a second), so `await` it. Both ends must be within 1000 m of the map's
+   * middle. At most 32 rays a tick; asking for more throws. Every script can use it.
+   */
+  raycast(from: Point, to: Point): Promise<RayHit | null>;
+  /** Whether nothing of the map stands between `a` and `b`: true when a ray between them meets nothing. One ray. */
+  lineOfSight(a: Point, b: Point): Promise<boolean>;
+  /** The ground straight under `point`, down to under the play area's floor; or null if there is none. One ray. */
+  groundBelow(point: Point): Promise<RayHit | null>;
 
   /** Shows everyone a message from the map: 1 to 120 characters, a few a second at most. */
   say(text: string): void;
