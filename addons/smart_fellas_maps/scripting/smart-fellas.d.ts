@@ -286,6 +286,33 @@ interface MarkerSpec {
 }
 
 /**
+ * The water as game.setWater changes it. Anything left out stays as the map has it.
+ */
+interface WaterSpec {
+  /** The colour far things fade into, "#rrggbb". */
+  colour?: string;
+  /** How far anyone sees through it, in metres, from 5 to 300. Bots see through it as far. */
+  visibility?: number;
+  /**
+   * How bright it is, as a share of the map's own light, from 0 to 2: 0.2 is dim, 1 is as the
+   * map has it, 2 twice as bright. Unless `colour` is given too, the haze dims or brightens with it.
+   */
+  light?: number;
+}
+
+/** A light (game.light) at a point in the world, lighting what is near it. */
+interface LightSpec {
+  /** Where it is, within 1000 m of the map's middle. */
+  at: Point;
+  /** Its colour, "#rrggbb" (white if left out). */
+  colour?: string;
+  /** How strong it is, from 0 to 10: 1, the default, is about as bright as a diver's torch. */
+  strength?: number;
+  /** How far it reaches, in metres, from 1 to 40 (10 if left out). */
+  range?: number;
+}
+
+/**
  * A player in the match. The same player is always the same object, so === works. Once they have
  * left, `gone` is true, what they were reads as null, and what you ask of them does nothing.
  */
@@ -727,6 +754,26 @@ interface Game {
    * number, and its picks reach game.onChoose too. Host scripts only.
    */
   vote(spec: VoteSpec, viewers?: Viewers): Promise<VoteResult>;
+
+  /**
+   * Changes the water for everyone: its colour, how far anyone sees through it and how bright it
+   * is, each left as the map has it when left out. It fades in over `seconds` (0 to 60; at once if
+   * left out). A new call takes the place of the last, from the water shown then. Players who join
+   * later get it, and the lobby gives back the map's own. Host scripts only: in a client/ script it
+   * does nothing.
+   */
+  setWater(spec: WaterSpec, seconds?: number): void;
+  /** Gives back the map's own water, fading over `seconds` (0 to 60; at once if left out). */
+  resetWater(seconds?: number): void;
+  /**
+   * Puts up a light for everyone, or moves or changes the one with this id (ids as for widget). At
+   * most 16 are up at once, the map's and the mode's together: a 17th isn't put up (no error), and
+   * changing or removing those already up always works. Lights cast no shadows. Players who join
+   * later get them, and the lobby takes them all down. Host scripts only.
+   */
+  light(id: string, spec: LightSpec): void;
+  /** Takes down the light with this id, if it is up. */
+  removeLight(id: string): void;
 
   /** Calls `handler` once, when the match starts. */
   onMatchStart(handler: () => void): void;
