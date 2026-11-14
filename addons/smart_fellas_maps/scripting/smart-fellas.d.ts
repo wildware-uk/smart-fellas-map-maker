@@ -143,6 +143,11 @@ type Tool = "spear" | "net" | "sensor" | "torch";
  */
 type Skill = "dash" | "ink" | "grab" | "smell" | "shoot";
 
+/**
+ * How well a bot plays, the same choices as the lobby's bot skill (player.setBotLevel). New in 1.7.0.
+ */
+type BotLevel = "easy" | "normal" | "hard";
+
 /** Where a player is in the round. */
 type Life = "alive" | "respawning" | "out" | "waiting";
 
@@ -389,6 +394,18 @@ interface Player {
   removeBot(): void;
   /** Gives this bot something to be after; "goTo" takes a point (bots only, for game modes). */
   setGoal(goal: Goal, x?: number, y?: number, z?: number): void;
+  /**
+   * How well this bot plays: it starts at the lobby's bot skill. null for a person, and in every
+   * script on a player's PC, which isn't told. New in 1.7.0.
+   */
+  readonly botLevel: BotLevel | null;
+  /**
+   * Makes this bot play at `level` from now on: how fast it reacts, turns and aims, how much it
+   * notices, and how hard it chases; the rest of its ways stay its own. Other bots keep theirs. It
+   * stays through rounds until the mode is done, when the bot goes back to the level it joined at
+   * (bots only, for game modes). New in 1.7.0.
+   */
+  setBotLevel(level: BotLevel): void;
   /**
    * The creature they drive takes `target` in its jaws, as its own bite landing does: the catch, the
    * kill and its credit all happen, wherever the two are. Nothing happens unless both are alive in
