@@ -59,6 +59,9 @@
 // the mode then hears what happened through its own events (onTeamChange, onRoundEnd).
 // The calls marked "on the host only" work only in the host's game: a client/ script's call does
 // nothing. The host's game decides them and sends them to the players they are for.
+// An object a call takes (a spec, a point) is read for the values it holds itself, as an object
+// literal or a Vec point does: a value from a getter, from its prototype or through a Proxy reads as
+// left out, so none of the script's own code runs inside a call.
 
 /** A point in the map, in metres. y is up. */
 interface Point {
@@ -277,8 +280,15 @@ interface VoteSpec {
 
 /** A marker (game.marker) at a point in the world, seen through rock, with its distance under it. */
 interface MarkerSpec {
-  /** Where it is, within 1000 m of the map's middle. */
-  at: Point;
+  /** Where it is, within 1000 m of the map's middle. Give this or `on`, not both. */
+  at?: Point;
+  /**
+   * The player it rides over, moving with them, in place of `at`. A screen shows it only while that
+   * screen is sent the player's body, as when they are near enough to see, so it never shows anyone
+   * more than their own game knows. Not shown while the player has no body (waiting, respawning, out
+   * or gone). New in 1.6.0.
+   */
+  on?: Player;
   /** The text over it, 0 to 24 characters. */
   label?: string;
   /** Its colour, "#rrggbb" (white if left out). */
