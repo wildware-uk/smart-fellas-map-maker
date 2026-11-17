@@ -1391,6 +1391,8 @@ static func _check_players(root: SmartFellasMap, scene: Scene) -> void:
 	for team in [["divers", "diver", scene.diver_spawns], ["octopuses", "octopus", scene.octopus_spawns]]:
 		if sizes[team[0]] > team[2].size() and not team[2].is_empty():
 			scene.problems.append("The map is made for up to %d %s, and has %d %s spawn points. Each needs one: add some or lower the number." % [sizes[team[0]], team[0], team[2].size(), team[1]])
+	if root.fill_divers < 0 or root.fill_divers > sizes["divers"]:
+		scene.problems.append("A bot fill stops at %d divers, and the map is made for %d. It must be from 1 to that, or 0 to fill the whole team." % [root.fill_divers, sizes["divers"]])
 
 
 ## Teams that start in sight of each other make for a short, dull round. It's the map maker's call.
@@ -3338,7 +3340,8 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 		most_growing, food["patches"], food["spots"]
 	]
 	text += "    fish: [%s],\n    triggers: [%s],\n    hunters: %s,\n    clownfish: %s,\n" % [_fish_lines(scene), _trigger_lines(scene), _switch(root.hunters), _switch(root.clownfish)]
-	text += "    players: (fewest: %d, most: %d, max_divers: %d, max_octopuses: %d),\n" % [root.fewest_players, divers + octopuses, divers, octopuses]
+	var fill := ", fill_divers: %d" % root.fill_divers if root.fill_divers > 0 else ""
+	text += "    players: (fewest: %d, most: %d, max_divers: %d, max_octopuses: %d%s),\n" % [root.fewest_players, divers + octopuses, divers, octopuses, fill]
 	text += "    far_side: 0.0,\n"
 	var box := root.area_box()
 	var widest: float = minf(box.size.x, box.size.z) * 0.5 * 0.6

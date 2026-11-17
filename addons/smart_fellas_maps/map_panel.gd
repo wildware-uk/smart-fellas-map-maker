@@ -45,6 +45,7 @@ const PLAYER_NUMBERS := [
 	["fewest_players", "Fewest players", Vector2(2.0, 32.0), 1.0],
 	["most_divers", "Divers it's made for (0: by spawn points)", Vector2(0.0, 32.0), 1.0],
 	["most_octopuses", "Octopuses it's made for (0: by spawn points)", Vector2(0.0, 32.0), 1.0],
+	["fill_divers", "Divers a bot fill stops at (0: the whole team)", Vector2(0.0, 32.0), 1.0],
 ]
 const SWITCHES := [
 	["hunters", "Shark and eels hunt"],
@@ -930,7 +931,7 @@ func _on_name_typed(words: String) -> void:
 
 
 func _on_number_changed(value: float, key: String) -> void:
-	_set_property(key, int(value) if key in ["fewest_players", "most_divers", "most_octopuses", "anglers_at_once"] else value)
+	_set_property(key, int(value) if key in ["fewest_players", "most_divers", "most_octopuses", "fill_divers", "anglers_at_once"] else value)
 
 
 func _on_switch_toggled(on: bool, key: String) -> void:

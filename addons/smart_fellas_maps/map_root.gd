@@ -111,6 +111,9 @@ var area_depth: float:
 ## each spawn point. Only advice: a lobby can go over it, and the game warns that it may feel crowded.
 @export_range(0, 32) var most_divers := 0
 @export_range(0, 32) var most_octopuses := 0
+## How many divers a lobby that fills itself with bots makes the team up to, people and all. 0 means every
+## diver's place the lobby has. It limits nobody: people can still join, and a leader can add bots by hand.
+@export_range(0, 32) var fill_divers := 0
 
 @export_group("Sea life")
 ## Whether the shark and the eels may hunt here. The lobby can still turn each off.
