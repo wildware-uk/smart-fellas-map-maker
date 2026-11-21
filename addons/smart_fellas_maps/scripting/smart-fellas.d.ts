@@ -675,6 +675,13 @@ interface Game {
    */
   loadout(team: "diver", ...tools: Tool[]): void;
   /**
+   * How many motion sensors a diver may have out at once: 1 to 8. Placing one more takes away that
+   * diver's oldest. `who` is "divers" for every diver (if left out), or "turned" for divers who were
+   * octopuses caught this round (see setFate's "turn"), in place of every diver's number. Until a
+   * script calls it, every diver may have 3 out (for game modes).
+   */
+  sensorLimit(count: number, who?: "divers" | "turned"): void;
+  /**
    * Closes a team to people in the lobby: its Join button greys out with `why` (1 to 60 characters)
    * under it, and asking to join it is refused. Nobody already on it is moved; use setTeam for that
    * (for game modes).
