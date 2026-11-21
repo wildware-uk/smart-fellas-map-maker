@@ -35,6 +35,9 @@ const CRAWL_FORMAT := 9
 ## The game's BLEND_FORMAT, for a box map that says some of its own models blend into the ground, and
 ## otherwise as CRAWL_FORMAT.
 const BLEND_FORMAT := 10
+## The game's SURFACE_FORMAT, for a box map that says where its sea's surface is (#496), and otherwise as
+## BLEND_FORMAT.
+const SURFACE_FORMAT := 11
 ## The game's SMALL_GROWTH_MOST in src/map/reef.rs: a model of the map's own under this many metres across
 ## and tall, once scaled, is a growth octopuses go round, unless the map says otherwise.
 const SMALL_GROWTH_MOST := 1.1
@@ -3325,6 +3328,10 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	var blends := _blend_models_text(scene)
 	if root.play_area() != null and not blends.is_empty():
 		format = BLEND_FORMAT
+	# And only one that says where its sea's surface is the newest.
+	var surface := _surface_text(root)
+	if not surface.is_empty():
+		format = SURFACE_FORMAT
 	var text := "(\n    format: %d,\n    name: \"%s\",\n" % [format, root.map_name]
 	if root.play_area() != null:
 		var area := root.area_box()
@@ -3361,8 +3368,17 @@ static func _map_text(root: SmartFellasMap, scene: Scene) -> String:
 	text += _poses_text(scene)
 	text += crawls
 	text += blends
+	text += surface
 	text += ")\n"
 	return text
+
+
+## The map's `surface` section: where its sea's surface is, if the map says, on a play area box. A map that
+## doesn't say has it just under the top of its play area, which is what a map with no section has.
+static func _surface_text(root: SmartFellasMap) -> String:
+	if not root.custom_surface or root.play_area() == null:
+		return ""
+	return "    surface: (height: %s),\n" % _number(root.surface_height)
 
 
 ## The map's `grade` section: its colour grading look and strength, or nothing for the natural look at

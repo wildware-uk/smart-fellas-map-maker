@@ -682,6 +682,13 @@ interface Game {
    */
   sensorLimit(count: number, who?: "divers" | "turned"): void;
   /**
+   * How long divers float at the sea's surface as each hunt starts, before they may dive: 0 to 60
+   * whole seconds. Everyone sees the countdown, and the round's clock starts when it ends. 0 turns
+   * it off: divers start on their start points, as before 1.10.0. Until a script calls it, the
+   * countdown runs 10 seconds (for game modes).
+   */
+  diveCountdown(seconds: number): void;
+  /**
    * Closes a team to people in the lobby: its Join button greys out with `why` (1 to 60 characters)
    * under it, and asking to join it is refused. Nobody already on it is moved; use setTeam for that
    * (for game modes).

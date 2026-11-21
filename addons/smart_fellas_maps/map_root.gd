@@ -143,6 +143,13 @@ var area_depth: float:
 		water_overrides = value
 		show_water()
 
+@export_group("Sea surface")
+## Divers start each hunt floating at the sea's surface. Off: it lies just under the top of the play
+## area, everywhere. On: at Surface Height instead, which only a map with a play area box can say.
+@export var custom_surface := false
+## How high the sea's surface is, in metres, with Custom Surface on.
+@export var surface_height := 10.0
+
 @export_group("Colour grading")
 ## The look the game lays over the whole picture on this map. The Water panel has the same choice.
 @export_enum("Natural", "Sunset violet", "Tropical shallows", "Deep teal", "Murky green", "Night blue", "Postcard") var grade_look := 0
