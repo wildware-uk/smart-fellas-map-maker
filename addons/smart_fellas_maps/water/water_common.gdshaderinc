@@ -61,7 +61,7 @@ const float SF_SHAFT_COS_INNER = 0.97590;
 const float SF_SHAFT_COS_OUTER = 0.95534;
 // The shade it shines through: its height over the sea base, one repeat's width, its drift, and how far from a repeat's edge
 // the plane's middle sits.
-const float SF_SHADE_HEIGHT = 26.5;
+const float SF_SHADE_HEIGHT = 28.0;
 const float SF_SHADE_TILE = 24.0;
 // 6 and 3 tiles every 600 s, as in the game.
 const vec2 SF_SHADE_DRIFT = vec2(6.0, 3.0) * SF_SHADE_TILE / 600.0;

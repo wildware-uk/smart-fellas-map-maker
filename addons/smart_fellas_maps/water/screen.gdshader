@@ -19,8 +19,8 @@ uniform sampler2D shade_bands : filter_linear, repeat_enable;
 // middle sits.
 const float WATER_DENSITY = 0.03;
 const float WATER_SCATTERING = 0.3;
-const vec3 WATER_HALF = vec3(35.0, 15.5, 35.0);
-const float WATER_MIDDLE = 11.5;
+const vec3 WATER_HALF = vec3(35.0, 16.0, 35.0);
+const float WATER_MIDDLE = 12.0;
 const vec3 FOG_COLOUR = vec3(0.52711, 0.88792, 1.0);
 const vec3 LIGHT_TINT = vec3(1.0, 0.95597, 0.78741);
 // The strength the water's light is worked out from, when the shaft light is at its full.
