@@ -689,6 +689,14 @@ interface Game {
    */
   diveCountdown(seconds: number): void;
   /**
+   * Whether the hunt has round events: once or twice a hunt something happens to everyone at once,
+   * such as a Tuna Rush. `false` turns them off, whatever the host chose in the lobby, and `true`
+   * turns them on. It counts for the events still to come, not one already under way. Until a script
+   * calls it, the lobby's Round events setting decides, which is on unless the host turns it off
+   * (for game modes).
+   */
+  roundEvents(on: boolean): void;
+  /**
    * Closes a team to people in the lobby: its Join button greys out with `why` (1 to 60 characters)
    * under it, and asking to join it is refused. Nobody already on it is moved; use setTeam for that
    * (for game modes).
