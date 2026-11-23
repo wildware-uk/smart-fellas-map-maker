@@ -60,8 +60,8 @@ const MOST_MODELS := 16384
 const MOST_ENTRIES := 32768
 ## The game's limits on one model, from src/map/model.rs. Since #299 the ones on size only guard against a
 ## broken or hostile file, far past any real model: how heavy a map is goes in its performance score.
-const MOST_MODEL_TRIANGLES := 10000000
-const MOST_MODEL_CORNERS := 20000000
+const MOST_MODEL_TRIANGLES := 2000000
+const MOST_MODEL_CORNERS := 2000000
 const MOST_MODEL_MATERIALS := 1024
 const MOST_MODEL_PICTURES := 1024
 ## How many materials each model Export builds from a mesh holds at most: a mesh of more becomes several
@@ -98,12 +98,12 @@ const SMALLEST_PICTURE_SIDE := 256
 ## same count once, and so does a picture many models share. Each only stops a broken or hostile file
 ## (#299): past 1,536 materials the game still draws each one, and an octopus copies the closest of those.
 const MOST_MAP_MATERIALS := 60000
-const MOST_MAP_TRIANGLES := 100000000
-const MOST_MAP_CORNERS := 100000000
+const MOST_MAP_TRIANGLES := 5000000
+const MOST_MAP_CORNERS := 5000000
 const MOST_MAP_PICTURE_BYTES := 2147483648
 ## The game's MAX_SCALED_MODEL_TRIANGLES: the most those pieces at a size other than their model's own may
 ## draw, as each keeps a copy of its model's shape for bumping into.
-const MOST_SCALED_TRIANGLES := 50000000
+const MOST_SCALED_TRIANGLES := 10000000
 ## How near its own size a piece is taken as not resized at all: a tenth of a millimetre in a metre, too
 ## little to see, and well over what turning it rounds to.
 const NOT_RESIZED := 0.0001
@@ -2042,9 +2042,9 @@ static func _many_models_over(too_much: String) -> String:
 ## full stop, or nothing.
 static func _model_limits_problem(tally: Dictionary) -> String:
 	if tally["triangles"] > MOST_MODEL_TRIANGLES:
-		return "has %d triangles, past the %d the game can hold in memory for one model." % [tally["triangles"], MOST_MODEL_TRIANGLES]
+		return "has %d triangles, past the %d the game can hold in memory for one model. Split it into parts, each a model of its own." % [tally["triangles"], MOST_MODEL_TRIANGLES]
 	if tally["corners"] > MOST_MODEL_CORNERS:
-		return "has %d corners, past the %d the game can hold in memory for one model." % [tally["corners"], MOST_MODEL_CORNERS]
+		return "has %d corners, past the %d the game can hold in memory for one model. Split it into parts, each a model of its own." % [tally["corners"], MOST_MODEL_CORNERS]
 	if tally["materials"] > MOST_MODEL_MATERIALS:
 		return "has %d materials, and the game takes at most %d in one model. Drag its mesh into the scene in place of the model, and Export splits it by material." % [tally["materials"], MOST_MODEL_MATERIALS]
 	if tally["surfaces"] > MOST_PRIMITIVES:
