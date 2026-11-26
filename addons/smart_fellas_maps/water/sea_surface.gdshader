@@ -18,7 +18,7 @@ const float GLINTS_TILE = 7.0;
 const vec2 GLINTS_DRIFT = vec2(-19.0, 27.0) * GLINTS_TILE / 600.0;
 const vec3 GLINTS_COLOUR = vec3(3.0, 3.4, 3.2);
 // How far under the base the game's glints lie, in metres.
-const float GLINTS_UNDER = 0.3;
+const float GLINTS_UNDER = 0.02;
 
 varying vec3 world_at;
 
